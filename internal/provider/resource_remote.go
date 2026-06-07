@@ -131,25 +131,19 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			Description: "Serve stale cached content when upstream is unreachable.",
 			Optional:    true, Computed: true, Default: booldefault.StaticBool(true),
 		},
-	}
-
-	if r.packageType == "docker" {
-		attrs["ban_tags_enabled"] = schema.BoolAttribute{
-			Description: "Enable tag banning.",
+		"ban_tags_enabled": schema.BoolAttribute{
+			Description: "Enable tag banning (docker only).",
 			Optional:    true, Computed: true, Default: booldefault.StaticBool(false),
-		}
-		attrs["ban_tags"] = schema.ListAttribute{
-			Description: "Tags to ban (e.g. latest, edge).",
+		},
+		"ban_tags": schema.ListAttribute{
+			Description: "Tags to ban (docker only).",
 			Optional:    true,
 			ElementType: types.StringType,
-		}
-	}
-
-	if r.packageType == "terraform" {
-		attrs["releases_remote"] = schema.StringAttribute{
-			Description: "Name of the CDN remote for download URL rewriting.",
+		},
+		"releases_remote": schema.StringAttribute{
+			Description: "Name of the CDN remote for download URL rewriting (terraform only).",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
-		}
+		},
 	}
 
 	resp.Schema = schema.Schema{
@@ -268,14 +262,9 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 	api.Blocklist = listToStrings(ctx, m.Blocklist)
 	api.MutablePatterns = listToStrings(ctx, m.MutablePatterns)
 	api.ImmutablePatterns = listToStrings(ctx, m.ImmutablePatterns)
-
-	if r.packageType == "docker" {
-		api.BanTagsEnabled = m.BanTagsEnabled.ValueBool()
-		api.BanTags = listToStrings(ctx, m.BanTags)
-	}
-	if r.packageType == "terraform" {
-		api.ReleasesRemote = m.ReleasesRemote.ValueString()
-	}
+	api.BanTagsEnabled = m.BanTagsEnabled.ValueBool()
+	api.BanTags = listToStrings(ctx, m.BanTags)
+	api.ReleasesRemote = m.ReleasesRemote.ValueString()
 	return api
 }
 
@@ -296,14 +285,9 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 		QuarantineEnabled: types.BoolValue(api.QuarantineEnabled),
 		QuarantineDays:    types.Int64Value(api.QuarantineDays),
 		StaleOnError:      types.BoolValue(api.StaleOnError),
-	}
-
-	if r.packageType == "docker" {
-		m.BanTagsEnabled = types.BoolValue(api.BanTagsEnabled)
-		m.BanTags = stringsToList(ctx, api.BanTags)
-	}
-	if r.packageType == "terraform" {
-		m.ReleasesRemote = types.StringValue(api.ReleasesRemote)
+		BanTagsEnabled:    types.BoolValue(api.BanTagsEnabled),
+		BanTags:           stringsToList(ctx, api.BanTags),
+		ReleasesRemote:    types.StringValue(api.ReleasesRemote),
 	}
 	return m
 }
