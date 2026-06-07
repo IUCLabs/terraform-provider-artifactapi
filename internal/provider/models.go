@@ -1,0 +1,32 @@
+package provider
+
+type remoteAPI struct {
+	Name              string   `json:"name"`
+	PackageType       string   `json:"package_type"`
+	BaseURL           string   `json:"base_url"`
+	Description       string   `json:"description,omitempty"`
+	Username          string   `json:"username,omitempty"`
+	Password          string   `json:"password,omitempty"`
+	ImmutableTTL      int64    `json:"immutable_ttl"`
+	MutableTTL        int64    `json:"mutable_ttl"`
+	CheckMutable      bool     `json:"check_mutable"`
+	ImmutablePatterns []string `json:"immutable_patterns"`
+	MutablePatterns   []string `json:"mutable_patterns"`
+	Allowlist         []string `json:"allowlist"`
+	Blocklist         []string `json:"blocklist"`
+	BanTagsEnabled    bool     `json:"ban_tags_enabled"`
+	BanTags           []string `json:"ban_tags"`
+	QuarantineEnabled bool     `json:"quarantine_enabled"`
+	QuarantineDays    int64    `json:"quarantine_days"`
+	StaleOnError      bool     `json:"stale_on_error"`
+	ReleasesRemote    string   `json:"releases_remote,omitempty"`
+	ManagedBy         string   `json:"managed_by,omitempty"`
+}
+
+type virtualAPI struct {
+	Name        string   `json:"name"`
+	PackageType string   `json:"package_type"`
+	Description string   `json:"description,omitempty"`
+	Members     []string `json:"members"`
+	ManagedBy   string   `json:"managed_by,omitempty"`
+}
