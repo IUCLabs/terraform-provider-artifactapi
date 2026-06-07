@@ -57,7 +57,16 @@ func (p *ArtifactAPIProvider) Configure(ctx context.Context, req provider.Config
 
 func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewRemoteResource,
+		newRemoteResource("generic"),
+		newRemoteResource("docker"),
+		newRemoteResource("helm"),
+		newRemoteResource("pypi"),
+		newRemoteResource("npm"),
+		newRemoteResource("rpm"),
+		newRemoteResource("alpine"),
+		newRemoteResource("puppet"),
+		newRemoteResource("terraform"),
+		newRemoteResource("goproxy"),
 		NewVirtualResource,
 	}
 }

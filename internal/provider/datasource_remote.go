@@ -27,17 +27,17 @@ func (d *remoteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	resp.Schema = schema.Schema{
 		Description: "Read an existing ArtifactAPI remote.",
 		Attributes: map[string]schema.Attribute{
-			"name":               schema.StringAttribute{Required: true, Description: "Remote name."},
+			"name":               schema.StringAttribute{Required: true},
 			"package_type":       schema.StringAttribute{Computed: true},
 			"base_url":           schema.StringAttribute{Computed: true},
 			"description":        schema.StringAttribute{Computed: true},
 			"immutable_ttl":      schema.Int64Attribute{Computed: true},
 			"mutable_ttl":        schema.Int64Attribute{Computed: true},
 			"check_mutable":      schema.BoolAttribute{Computed: true},
-			"immutable_patterns": schema.ListAttribute{Computed: true, ElementType: types.StringType},
-			"mutable_patterns":   schema.ListAttribute{Computed: true, ElementType: types.StringType},
-			"allowlist":          schema.ListAttribute{Computed: true, ElementType: types.StringType},
+			"patterns":           schema.ListAttribute{Computed: true, ElementType: types.StringType},
 			"blocklist":          schema.ListAttribute{Computed: true, ElementType: types.StringType},
+			"mutable_patterns":   schema.ListAttribute{Computed: true, ElementType: types.StringType},
+			"immutable_patterns": schema.ListAttribute{Computed: true, ElementType: types.StringType},
 			"ban_tags_enabled":   schema.BoolAttribute{Computed: true},
 			"ban_tags":           schema.ListAttribute{Computed: true, ElementType: types.StringType},
 			"quarantine_enabled": schema.BoolAttribute{Computed: true},
@@ -57,10 +57,10 @@ type remoteDataSourceModel struct {
 	ImmutableTTL      types.Int64  `tfsdk:"immutable_ttl"`
 	MutableTTL        types.Int64  `tfsdk:"mutable_ttl"`
 	CheckMutable      types.Bool   `tfsdk:"check_mutable"`
-	ImmutablePatterns types.List   `tfsdk:"immutable_patterns"`
-	MutablePatterns   types.List   `tfsdk:"mutable_patterns"`
-	Allowlist         types.List   `tfsdk:"allowlist"`
+	Patterns          types.List   `tfsdk:"patterns"`
 	Blocklist         types.List   `tfsdk:"blocklist"`
+	MutablePatterns   types.List   `tfsdk:"mutable_patterns"`
+	ImmutablePatterns types.List   `tfsdk:"immutable_patterns"`
 	BanTagsEnabled    types.Bool   `tfsdk:"ban_tags_enabled"`
 	BanTags           types.List   `tfsdk:"ban_tags"`
 	QuarantineEnabled types.Bool   `tfsdk:"quarantine_enabled"`
@@ -103,10 +103,10 @@ func (d *remoteDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		ImmutableTTL:      types.Int64Value(remote.ImmutableTTL),
 		MutableTTL:        types.Int64Value(remote.MutableTTL),
 		CheckMutable:      types.BoolValue(remote.CheckMutable),
-		ImmutablePatterns: stringsToList(ctx, remote.ImmutablePatterns),
-		MutablePatterns:   stringsToList(ctx, remote.MutablePatterns),
-		Allowlist:         stringsToList(ctx, remote.Allowlist),
+		Patterns:          stringsToList(ctx, remote.Patterns),
 		Blocklist:         stringsToList(ctx, remote.Blocklist),
+		MutablePatterns:   stringsToList(ctx, remote.MutablePatterns),
+		ImmutablePatterns: stringsToList(ctx, remote.ImmutablePatterns),
 		BanTagsEnabled:    types.BoolValue(remote.BanTagsEnabled),
 		BanTags:           stringsToList(ctx, remote.BanTags),
 		QuarantineEnabled: types.BoolValue(remote.QuarantineEnabled),

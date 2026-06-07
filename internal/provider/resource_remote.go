@@ -21,12 +21,12 @@ var (
 )
 
 type remoteResource struct {
-	client *apiClient
+	client      *apiClient
+	packageType string
 }
 
 type remoteResourceModel struct {
 	Name              types.String `tfsdk:"name"`
-	PackageType       types.String `tfsdk:"package_type"`
 	BaseURL           types.String `tfsdk:"base_url"`
 	Description       types.String `tfsdk:"description"`
 	Username          types.String `tfsdk:"username"`
@@ -34,10 +34,10 @@ type remoteResourceModel struct {
 	ImmutableTTL      types.Int64  `tfsdk:"immutable_ttl"`
 	MutableTTL        types.Int64  `tfsdk:"mutable_ttl"`
 	CheckMutable      types.Bool   `tfsdk:"check_mutable"`
-	ImmutablePatterns types.List   `tfsdk:"immutable_patterns"`
-	MutablePatterns   types.List   `tfsdk:"mutable_patterns"`
-	Allowlist         types.List   `tfsdk:"allowlist"`
+	Patterns          types.List   `tfsdk:"patterns"`
 	Blocklist         types.List   `tfsdk:"blocklist"`
+	MutablePatterns   types.List   `tfsdk:"mutable_patterns"`
+	ImmutablePatterns types.List   `tfsdk:"immutable_patterns"`
 	BanTagsEnabled    types.Bool   `tfsdk:"ban_tags_enabled"`
 	BanTags           types.List   `tfsdk:"ban_tags"`
 	QuarantineEnabled types.Bool   `tfsdk:"quarantine_enabled"`
@@ -46,127 +46,115 @@ type remoteResourceModel struct {
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
 }
 
-func NewRemoteResource() resource.Resource {
-	return &remoteResource{}
+func newRemoteResource(packageType string) func() resource.Resource {
+	return func() resource.Resource {
+		return &remoteResource{packageType: packageType}
+	}
 }
 
+func NewRemoteGeneric() resource.Resource   { return &remoteResource{packageType: "generic"} }
+func NewRemoteDocker() resource.Resource    { return &remoteResource{packageType: "docker"} }
+func NewRemoteHelm() resource.Resource      { return &remoteResource{packageType: "helm"} }
+func NewRemotePyPI() resource.Resource      { return &remoteResource{packageType: "pypi"} }
+func NewRemoteNPM() resource.Resource       { return &remoteResource{packageType: "npm"} }
+func NewRemoteRPM() resource.Resource       { return &remoteResource{packageType: "rpm"} }
+func NewRemoteAlpine() resource.Resource    { return &remoteResource{packageType: "alpine"} }
+func NewRemotePuppet() resource.Resource    { return &remoteResource{packageType: "puppet"} }
+func NewRemoteTerraform() resource.Resource { return &remoteResource{packageType: "terraform"} }
+func NewRemoteGoProxy() resource.Resource   { return &remoteResource{packageType: "goproxy"} }
+
 func (r *remoteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_remote"
+	resp.TypeName = req.ProviderTypeName + "_remote_" + r.packageType
 }
 
 func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an ArtifactAPI remote proxy repository.",
-		Attributes: map[string]schema.Attribute{
-			"name": schema.StringAttribute{
-				Description: "Unique name of the remote.",
-				Required:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"package_type": schema.StringAttribute{
-				Description: "Package type: generic, docker, helm, pypi, npm, rpm, alpine, puppet, terraform, goproxy.",
-				Required:    true,
-			},
-			"base_url": schema.StringAttribute{
-				Description: "Upstream repository base URL.",
-				Required:    true,
-			},
-			"description": schema.StringAttribute{
-				Description: "Human-readable description.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString(""),
-			},
-			"username": schema.StringAttribute{
-				Description: "Username for upstream authentication.",
-				Optional:    true,
-				Computed:    true,
-				Sensitive:   true,
-				Default:     stringdefault.StaticString(""),
-			},
-			"password": schema.StringAttribute{
-				Description: "Password for upstream authentication.",
-				Optional:    true,
-				Computed:    true,
-				Sensitive:   true,
-				Default:     stringdefault.StaticString(""),
-			},
-			"immutable_ttl": schema.Int64Attribute{
-				Description: "TTL in seconds for immutable artifacts (0 = forever).",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(0),
-			},
-			"mutable_ttl": schema.Int64Attribute{
-				Description: "TTL in seconds for mutable artifacts.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(3600),
-			},
-			"check_mutable": schema.BoolAttribute{
-				Description: "Enable conditional revalidation (ETag/If-None-Match) for mutable artifacts.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
-			},
-			"immutable_patterns": schema.ListAttribute{
-				Description: "Regex patterns that identify immutable artifacts.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"mutable_patterns": schema.ListAttribute{
-				Description: "Additional regex patterns for mutable artifacts (merged with provider built-ins).",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"allowlist": schema.ListAttribute{
-				Description: "If non-empty, only paths matching these patterns are proxied. Empty = allow all.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"blocklist": schema.ListAttribute{
-				Description: "Paths matching these patterns are always denied (checked before allowlist).",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"ban_tags_enabled": schema.BoolAttribute{
-				Description: "Enable tag banning (Docker only).",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
-			},
-			"ban_tags": schema.ListAttribute{
-				Description: "Tags to ban (Docker only).",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"quarantine_enabled": schema.BoolAttribute{
-				Description: "Enable quarantine for newly published artifacts.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
-			},
-			"quarantine_days": schema.Int64Attribute{
-				Description: "Number of days to quarantine new artifacts.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(3),
-			},
-			"stale_on_error": schema.BoolAttribute{
-				Description: "Serve stale cached content when upstream is unreachable.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
-			},
-			"releases_remote": schema.StringAttribute{
-				Description: "Name of the CDN remote for download URL rewriting (terraform package type).",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString(""),
+	attrs := map[string]schema.Attribute{
+		"name": schema.StringAttribute{
+			Description: "Unique name of the remote.",
+			Required:    true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
 			},
 		},
+		"base_url": schema.StringAttribute{
+			Description: "Upstream repository base URL.",
+			Required:    true,
+		},
+		"description": schema.StringAttribute{
+			Optional: true, Computed: true, Default: stringdefault.StaticString(""),
+		},
+		"username": schema.StringAttribute{
+			Optional: true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
+		},
+		"password": schema.StringAttribute{
+			Optional: true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
+		},
+		"immutable_ttl": schema.Int64Attribute{
+			Description: "TTL in seconds for immutable artifacts (0 = forever).",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(0),
+		},
+		"mutable_ttl": schema.Int64Attribute{
+			Description: "TTL in seconds for mutable artifacts.",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(3600),
+		},
+		"check_mutable": schema.BoolAttribute{
+			Description: "Enable conditional revalidation for mutable artifacts.",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(true),
+		},
+		"patterns": schema.ListAttribute{
+			Description: "Paths to proxy (empty = all). This is the allowlist.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"blocklist": schema.ListAttribute{
+			Description: "Paths to always deny (checked before patterns).",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"mutable_patterns": schema.ListAttribute{
+			Description: "Override: paths that should be mutable even if the provider would classify as immutable.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"immutable_patterns": schema.ListAttribute{
+			Description: "Override: paths that should be immutable even if the provider would classify as mutable.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"quarantine_enabled": schema.BoolAttribute{
+			Optional: true, Computed: true, Default: booldefault.StaticBool(false),
+		},
+		"quarantine_days": schema.Int64Attribute{
+			Optional: true, Computed: true, Default: int64default.StaticInt64(3),
+		},
+		"stale_on_error": schema.BoolAttribute{
+			Description: "Serve stale cached content when upstream is unreachable.",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(true),
+		},
+	}
+
+	if r.packageType == "docker" {
+		attrs["ban_tags_enabled"] = schema.BoolAttribute{
+			Description: "Enable tag banning.",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(false),
+		}
+		attrs["ban_tags"] = schema.ListAttribute{
+			Description: "Tags to ban (e.g. latest, edge).",
+			Optional:    true,
+			ElementType: types.StringType,
+		}
+	}
+
+	if r.packageType == "terraform" {
+		attrs["releases_remote"] = schema.StringAttribute{
+			Description: "Name of the CDN remote for download URL rewriting.",
+			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
+		}
+	}
+
+	resp.Schema = schema.Schema{
+		Description: fmt.Sprintf("Manages an ArtifactAPI %s remote.", r.packageType),
+		Attributes:  attrs,
 	}
 }
 
@@ -189,7 +177,7 @@ func (r *remoteResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	api := modelToAPI(ctx, plan)
+	api := r.modelToAPI(ctx, plan)
 	api.ManagedBy = "terraform"
 
 	var created remoteAPI
@@ -198,7 +186,7 @@ func (r *remoteResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	state := apiToModel(ctx, created)
+	state := r.apiToModel(ctx, created)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -220,7 +208,7 @@ func (r *remoteResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	newState := apiToModel(ctx, remote)
+	newState := r.apiToModel(ctx, remote)
 	resp.Diagnostics.Append(resp.State.Set(ctx, newState)...)
 }
 
@@ -231,7 +219,7 @@ func (r *remoteResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	api := modelToAPI(ctx, plan)
+	api := r.modelToAPI(ctx, plan)
 	api.ManagedBy = "terraform"
 
 	var updated remoteAPI
@@ -240,7 +228,7 @@ func (r *remoteResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	state := apiToModel(ctx, updated)
+	state := r.apiToModel(ctx, updated)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -261,10 +249,10 @@ func (r *remoteResource) ImportState(ctx context.Context, req resource.ImportSta
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }
 
-func modelToAPI(ctx context.Context, m remoteResourceModel) remoteAPI {
+func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) remoteAPI {
 	api := remoteAPI{
 		Name:              m.Name.ValueString(),
-		PackageType:       m.PackageType.ValueString(),
+		PackageType:       r.packageType,
 		BaseURL:           m.BaseURL.ValueString(),
 		Description:       m.Description.ValueString(),
 		Username:          m.Username.ValueString(),
@@ -272,24 +260,28 @@ func modelToAPI(ctx context.Context, m remoteResourceModel) remoteAPI {
 		ImmutableTTL:      m.ImmutableTTL.ValueInt64(),
 		MutableTTL:        m.MutableTTL.ValueInt64(),
 		CheckMutable:      m.CheckMutable.ValueBool(),
-		BanTagsEnabled:    m.BanTagsEnabled.ValueBool(),
 		QuarantineEnabled: m.QuarantineEnabled.ValueBool(),
 		QuarantineDays:    m.QuarantineDays.ValueInt64(),
 		StaleOnError:      m.StaleOnError.ValueBool(),
-		ReleasesRemote:    m.ReleasesRemote.ValueString(),
 	}
-	api.ImmutablePatterns = listToStrings(ctx, m.ImmutablePatterns)
-	api.MutablePatterns = listToStrings(ctx, m.MutablePatterns)
-	api.Allowlist = listToStrings(ctx, m.Allowlist)
+	api.Patterns = listToStrings(ctx, m.Patterns)
 	api.Blocklist = listToStrings(ctx, m.Blocklist)
-	api.BanTags = listToStrings(ctx, m.BanTags)
+	api.MutablePatterns = listToStrings(ctx, m.MutablePatterns)
+	api.ImmutablePatterns = listToStrings(ctx, m.ImmutablePatterns)
+
+	if r.packageType == "docker" {
+		api.BanTagsEnabled = m.BanTagsEnabled.ValueBool()
+		api.BanTags = listToStrings(ctx, m.BanTags)
+	}
+	if r.packageType == "terraform" {
+		api.ReleasesRemote = m.ReleasesRemote.ValueString()
+	}
 	return api
 }
 
-func apiToModel(ctx context.Context, api remoteAPI) remoteResourceModel {
-	return remoteResourceModel{
+func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteResourceModel {
+	m := remoteResourceModel{
 		Name:              types.StringValue(api.Name),
-		PackageType:       types.StringValue(api.PackageType),
 		BaseURL:           types.StringValue(api.BaseURL),
 		Description:       types.StringValue(api.Description),
 		Username:          types.StringValue(api.Username),
@@ -297,36 +289,21 @@ func apiToModel(ctx context.Context, api remoteAPI) remoteResourceModel {
 		ImmutableTTL:      types.Int64Value(api.ImmutableTTL),
 		MutableTTL:        types.Int64Value(api.MutableTTL),
 		CheckMutable:      types.BoolValue(api.CheckMutable),
-		ImmutablePatterns: stringsToList(ctx, api.ImmutablePatterns),
-		MutablePatterns:   stringsToList(ctx, api.MutablePatterns),
-		Allowlist:         stringsToList(ctx, api.Allowlist),
+		Patterns:          stringsToList(ctx, api.Patterns),
 		Blocklist:         stringsToList(ctx, api.Blocklist),
-		BanTagsEnabled:    types.BoolValue(api.BanTagsEnabled),
-		BanTags:           stringsToList(ctx, api.BanTags),
+		MutablePatterns:   stringsToList(ctx, api.MutablePatterns),
+		ImmutablePatterns: stringsToList(ctx, api.ImmutablePatterns),
 		QuarantineEnabled: types.BoolValue(api.QuarantineEnabled),
 		QuarantineDays:    types.Int64Value(api.QuarantineDays),
 		StaleOnError:      types.BoolValue(api.StaleOnError),
-		ReleasesRemote:    types.StringValue(api.ReleasesRemote),
 	}
-}
 
-func listToStrings(ctx context.Context, l types.List) []string {
-	if l.IsNull() || l.IsUnknown() {
-		return nil
+	if r.packageType == "docker" {
+		m.BanTagsEnabled = types.BoolValue(api.BanTagsEnabled)
+		m.BanTags = stringsToList(ctx, api.BanTags)
 	}
-	var result []string
-	l.ElementsAs(ctx, &result, false)
-	return result
-}
-
-func stringsToList(ctx context.Context, ss []string) types.List {
-	if ss == nil {
-		ss = []string{}
+	if r.packageType == "terraform" {
+		m.ReleasesRemote = types.StringValue(api.ReleasesRemote)
 	}
-	elems := make([]types.String, len(ss))
-	for i, s := range ss {
-		elems[i] = types.StringValue(s)
-	}
-	list, _ := types.ListValueFrom(ctx, types.StringType, elems)
-	return list
+	return m
 }

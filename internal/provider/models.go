@@ -10,10 +10,10 @@ type remoteAPI struct {
 	ImmutableTTL      int64    `json:"immutable_ttl"`
 	MutableTTL        int64    `json:"mutable_ttl"`
 	CheckMutable      bool     `json:"check_mutable"`
-	ImmutablePatterns []string `json:"immutable_patterns"`
-	MutablePatterns   []string `json:"mutable_patterns"`
-	Allowlist         []string `json:"allowlist"`
+	Patterns          []string `json:"patterns"`
 	Blocklist         []string `json:"blocklist"`
+	MutablePatterns   []string `json:"mutable_patterns"`
+	ImmutablePatterns []string `json:"immutable_patterns"`
 	BanTagsEnabled    bool     `json:"ban_tags_enabled"`
 	BanTags           []string `json:"ban_tags"`
 	QuarantineEnabled bool     `json:"quarantine_enabled"`
