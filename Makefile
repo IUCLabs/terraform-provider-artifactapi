@@ -3,7 +3,8 @@
 BINARY := terraform-provider-artifactapi
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 OS_ARCH := linux_amd64
-INSTALL_DIR := ~/.terraform.d/plugins/git.unkin.net/unkin/artifactapi/$(VERSION)/$(OS_ARCH)
+INSTALL_VERSION := $(shell echo $(VERSION) | sed 's/^v//')
+INSTALL_DIR := ~/.terraform.d/plugins/git.unkin.net/unkin/artifactapi/$(INSTALL_VERSION)/$(OS_ARCH)
 
 GO_VERSION_REQUIRED := 1.23
 GO_VERSION_ACTUAL := $(shell go version | sed 's/go version go\([0-9]*\.[0-9]*\).*/\1/')
