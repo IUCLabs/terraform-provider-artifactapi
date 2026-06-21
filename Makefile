@@ -1,7 +1,7 @@
-.PHONY: build install test lint fmt clean tidy
+.PHONY: build install test lint fmt clean tidy patch minor major
 
 BINARY := terraform-provider-artifactapi
-VERSION ?= 0.0.1
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 OS_ARCH := linux_amd64
 INSTALL_DIR := ~/.terraform.d/plugins/git.unkin.net/unkin/artifactapi/$(VERSION)/$(OS_ARCH)
 
@@ -34,3 +34,21 @@ clean:
 
 tidy:
 	go mod tidy
+
+_LATEST := $(shell git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)
+_BASE   := $(if $(_LATEST),$(_LATEST),v0.0.0)
+_MAJ    := $(shell echo $(_BASE) | sed 's/^v//' | cut -d. -f1)
+_MIN    := $(shell echo $(_BASE) | sed 's/^v//' | cut -d. -f2)
+_PAT    := $(shell echo $(_BASE) | sed 's/^v//' | cut -d. -f3)
+
+patch:
+	@NEW=v$(_MAJ).$(_MIN).$(shell expr $(_PAT) + 1); \
+	git tag $$NEW && echo "Tagged $$NEW" && git push origin $$NEW
+
+minor:
+	@NEW=v$(_MAJ).$(shell expr $(_MIN) + 1).0; \
+	git tag $$NEW && echo "Tagged $$NEW" && git push origin $$NEW
+
+major:
+	@NEW=v$(shell expr $(_MAJ) + 1).0.0; \
+	git tag $$NEW && echo "Tagged $$NEW" && git push origin $$NEW
