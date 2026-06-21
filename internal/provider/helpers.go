@@ -16,7 +16,7 @@ func listToStrings(ctx context.Context, l types.List) []string {
 }
 
 func stringsToList(ctx context.Context, ss []string) types.List {
-	if len(ss) == 0 {
+	if ss == nil {
 		return types.ListNull(types.StringType)
 	}
 	elems := make([]types.String, len(ss))
@@ -25,4 +25,15 @@ func stringsToList(ctx context.Context, ss []string) types.List {
 	}
 	list, _ := types.ListValueFrom(ctx, types.StringType, elems)
 	return list
+}
+
+// preserveListNullEmptySemantics keeps the prior null/empty distinction when
+// the API returns null for a field that was previously an empty list.
+// Without this, OpenTofu reports "inconsistent result after apply" because
+// the plan/state had [] but the provider returned null.
+func preserveListNullEmptySemantics(prior, current types.List) types.List {
+	if current.IsNull() && !prior.IsNull() && len(prior.Elements()) == 0 {
+		return prior
+	}
+	return current
 }
