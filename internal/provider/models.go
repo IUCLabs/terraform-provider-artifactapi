@@ -3,6 +3,7 @@ package provider
 type remoteAPI struct {
 	Name              string   `json:"name"`
 	PackageType       string   `json:"package_type"`
+	RepoType          string   `json:"repo_type,omitempty"`
 	BaseURL           string   `json:"base_url"`
 	Description       string   `json:"description,omitempty"`
 	Username          string   `json:"username,omitempty"`
