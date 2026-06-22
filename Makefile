@@ -33,7 +33,7 @@ fmt: check-go
 
 package: build
 	cp $(BINARY) $(BINARY)_v$(INSTALL_VERSION)
-	zip $(ZIP) $(BINARY)_v$(INSTALL_VERSION)
+	python3 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED); z.write(sys.argv[2]); z.close()" $(ZIP) $(BINARY)_v$(INSTALL_VERSION)
 	rm $(BINARY)_v$(INSTALL_VERSION)
 
 clean:
