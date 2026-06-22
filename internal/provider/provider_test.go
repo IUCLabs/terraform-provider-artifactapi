@@ -66,8 +66,8 @@ func TestProvider_Resources(t *testing.T) {
 	p := &ArtifactAPIProvider{version: "1.0.0"}
 	resources := p.Resources(context.Background())
 
-	// 10 remote resource types + 1 virtual = 11
-	expectedCount := 11
+	// 10 remote resource types + 1 virtual + 1 local_terraform = 12
+	expectedCount := 12
 	if len(resources) != expectedCount {
 		t.Fatalf("expected %d resources, got %d", expectedCount, len(resources))
 	}
@@ -107,6 +107,7 @@ func TestProvider_Resources_ContainsExpectedTypes(t *testing.T) {
 		"artifactapi_remote_terraform",
 		"artifactapi_remote_goproxy",
 		"artifactapi_virtual",
+		"artifactapi_local_terraform",
 	}
 
 	for _, name := range expected {
