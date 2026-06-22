@@ -181,6 +181,7 @@ func (r *remoteResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	state := r.apiToModel(ctx, created)
+	reconcileOptionalLists(&plan, &state)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -203,6 +204,7 @@ func (r *remoteResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	newState := r.apiToModel(ctx, remote)
+	reconcileOptionalLists(&state, &newState)
 	resp.Diagnostics.Append(resp.State.Set(ctx, newState)...)
 }
 
@@ -223,6 +225,7 @@ func (r *remoteResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	state := r.apiToModel(ctx, updated)
+	reconcileOptionalLists(&plan, &state)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -241,6 +244,14 @@ func (r *remoteResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 func (r *remoteResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+}
+
+func reconcileOptionalLists(prior, current *remoteResourceModel) {
+	current.Patterns = preserveListNullEmptySemantics(prior.Patterns, current.Patterns)
+	current.Blocklist = preserveListNullEmptySemantics(prior.Blocklist, current.Blocklist)
+	current.MutablePatterns = preserveListNullEmptySemantics(prior.MutablePatterns, current.MutablePatterns)
+	current.ImmutablePatterns = preserveListNullEmptySemantics(prior.ImmutablePatterns, current.ImmutablePatterns)
+	current.BanTags = preserveListNullEmptySemantics(prior.BanTags, current.BanTags)
 }
 
 func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) remoteAPI {
