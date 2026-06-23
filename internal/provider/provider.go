@@ -69,6 +69,8 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		newRemoteResource("goproxy"),
 		NewVirtualResource,
 		NewLocalTerraformResource,
+		NewLocalPyPIResource,
+		NewLocalRPMResource,
 	}
 }
 
