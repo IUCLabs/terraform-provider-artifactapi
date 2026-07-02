@@ -44,6 +44,10 @@ type remoteResourceModel struct {
 	QuarantineDays    types.Int64  `tfsdk:"quarantine_days"`
 	StaleOnError      types.Bool   `tfsdk:"stale_on_error"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
+
+	UpstreamDialTimeout           types.Int64 `tfsdk:"upstream_dial_timeout"`
+	UpstreamTLSTimeout            types.Int64 `tfsdk:"upstream_tls_timeout"`
+	UpstreamResponseHeaderTimeout types.Int64 `tfsdk:"upstream_response_header_timeout"`
 }
 
 func newRemoteResource(packageType string) func() resource.Resource {
@@ -143,6 +147,18 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		"releases_remote": schema.StringAttribute{
 			Description: "Name of the CDN remote for download URL rewriting (terraform only).",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
+		},
+		"upstream_dial_timeout": schema.Int64Attribute{
+			Description: "Upstream TCP connect timeout in seconds (0 = server default).",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(0),
+		},
+		"upstream_tls_timeout": schema.Int64Attribute{
+			Description: "Upstream TLS handshake timeout in seconds (0 = server default).",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(0),
+		},
+		"upstream_response_header_timeout": schema.Int64Attribute{
+			Description: "Upstream response-header timeout in seconds (0 = server default).",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(0),
 		},
 	}
 
@@ -268,6 +284,10 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 		QuarantineEnabled: m.QuarantineEnabled.ValueBool(),
 		QuarantineDays:    m.QuarantineDays.ValueInt64(),
 		StaleOnError:      m.StaleOnError.ValueBool(),
+
+		UpstreamDialTimeout:           m.UpstreamDialTimeout.ValueInt64(),
+		UpstreamTLSTimeout:            m.UpstreamTLSTimeout.ValueInt64(),
+		UpstreamResponseHeaderTimeout: m.UpstreamResponseHeaderTimeout.ValueInt64(),
 	}
 	api.Patterns = listToStrings(ctx, m.Patterns)
 	api.Blocklist = listToStrings(ctx, m.Blocklist)
@@ -299,6 +319,10 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 		BanTagsEnabled:    types.BoolValue(api.BanTagsEnabled),
 		BanTags:           stringsToList(ctx, api.BanTags),
 		ReleasesRemote:    types.StringValue(api.ReleasesRemote),
+
+		UpstreamDialTimeout:           types.Int64Value(api.UpstreamDialTimeout),
+		UpstreamTLSTimeout:            types.Int64Value(api.UpstreamTLSTimeout),
+		UpstreamResponseHeaderTimeout: types.Int64Value(api.UpstreamResponseHeaderTimeout),
 	}
 	return m
 }

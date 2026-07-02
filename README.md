@@ -82,6 +82,9 @@ Available resource types:
 | `quarantine_enabled` | No       | `false` | Enable quarantine for new artifacts                               |
 | `quarantine_days`    | No       | `3`     | Days to quarantine new artifacts                                  |
 | `stale_on_error`     | No       | `true`  | Serve stale cache when upstream is unreachable                    |
+| `upstream_dial_timeout` | No    | `0`     | Upstream TCP connect timeout in seconds (0 = server default)      |
+| `upstream_tls_timeout` | No     | `0`     | Upstream TLS handshake timeout in seconds (0 = server default)    |
+| `upstream_response_header_timeout` | No | `0` | Upstream response-header timeout in seconds (0 = server default) |
 
 #### Docker-specific Attributes
 
