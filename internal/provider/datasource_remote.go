@@ -45,6 +45,10 @@ func (d *remoteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"stale_on_error":     schema.BoolAttribute{Computed: true},
 			"releases_remote":    schema.StringAttribute{Computed: true},
 			"managed_by":         schema.StringAttribute{Computed: true},
+
+			"upstream_dial_timeout":            schema.Int64Attribute{Computed: true},
+			"upstream_tls_timeout":             schema.Int64Attribute{Computed: true},
+			"upstream_response_header_timeout": schema.Int64Attribute{Computed: true},
 		},
 	}
 }
@@ -68,6 +72,10 @@ type remoteDataSourceModel struct {
 	StaleOnError      types.Bool   `tfsdk:"stale_on_error"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
 	ManagedBy         types.String `tfsdk:"managed_by"`
+
+	UpstreamDialTimeout           types.Int64 `tfsdk:"upstream_dial_timeout"`
+	UpstreamTLSTimeout            types.Int64 `tfsdk:"upstream_tls_timeout"`
+	UpstreamResponseHeaderTimeout types.Int64 `tfsdk:"upstream_response_header_timeout"`
 }
 
 func (d *remoteDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -114,6 +122,10 @@ func (d *remoteDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		StaleOnError:      types.BoolValue(remote.StaleOnError),
 		ReleasesRemote:    types.StringValue(remote.ReleasesRemote),
 		ManagedBy:         types.StringValue(remote.ManagedBy),
+
+		UpstreamDialTimeout:           types.Int64Value(remote.UpstreamDialTimeout),
+		UpstreamTLSTimeout:            types.Int64Value(remote.UpstreamTLSTimeout),
+		UpstreamResponseHeaderTimeout: types.Int64Value(remote.UpstreamResponseHeaderTimeout),
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }

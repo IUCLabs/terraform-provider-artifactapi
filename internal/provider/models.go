@@ -22,6 +22,10 @@ type remoteAPI struct {
 	StaleOnError      bool     `json:"stale_on_error"`
 	ReleasesRemote    string   `json:"releases_remote,omitempty"`
 	ManagedBy         string   `json:"managed_by,omitempty"`
+
+	UpstreamDialTimeout           int64 `json:"upstream_dial_timeout"`
+	UpstreamTLSTimeout            int64 `json:"upstream_tls_timeout"`
+	UpstreamResponseHeaderTimeout int64 `json:"upstream_response_header_timeout"`
 }
 
 type virtualAPI struct {

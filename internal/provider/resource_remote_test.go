@@ -31,10 +31,18 @@ func TestModelToAPI_FullFields(t *testing.T) {
 		QuarantineDays:    types.Int64Value(7),
 		StaleOnError:      types.BoolValue(false),
 		ReleasesRemote:    types.StringValue("cdn-remote"),
+
+		UpstreamDialTimeout:           types.Int64Value(3),
+		UpstreamTLSTimeout:            types.Int64Value(4),
+		UpstreamResponseHeaderTimeout: types.Int64Value(5),
 	}
 
 	api := r.modelToAPI(ctx, model)
 
+	if api.UpstreamDialTimeout != 3 || api.UpstreamTLSTimeout != 4 || api.UpstreamResponseHeaderTimeout != 5 {
+		t.Errorf("upstream timeouts: got %d/%d/%d, want 3/4/5",
+			api.UpstreamDialTimeout, api.UpstreamTLSTimeout, api.UpstreamResponseHeaderTimeout)
+	}
 	if api.Name != "my-remote" {
 		t.Errorf("Name: expected my-remote, got %s", api.Name)
 	}
@@ -211,10 +219,22 @@ func TestAPIToModel_FullFields(t *testing.T) {
 		StaleOnError:      false,
 		ReleasesRemote:    "cdn-remote",
 		ManagedBy:         "terraform",
+
+		UpstreamDialTimeout:           3,
+		UpstreamTLSTimeout:            4,
+		UpstreamResponseHeaderTimeout: 5,
 	}
 
 	model := r.apiToModel(ctx, api)
 
+	if model.UpstreamDialTimeout.ValueInt64() != 3 ||
+		model.UpstreamTLSTimeout.ValueInt64() != 4 ||
+		model.UpstreamResponseHeaderTimeout.ValueInt64() != 5 {
+		t.Errorf("upstream timeouts: got %d/%d/%d, want 3/4/5",
+			model.UpstreamDialTimeout.ValueInt64(),
+			model.UpstreamTLSTimeout.ValueInt64(),
+			model.UpstreamResponseHeaderTimeout.ValueInt64())
+	}
 	if model.Name.ValueString() != "my-remote" {
 		t.Errorf("Name: expected my-remote, got %s", model.Name.ValueString())
 	}
@@ -324,11 +344,23 @@ func TestModelToAPI_RoundTrip(t *testing.T) {
 		QuarantineDays:    3,
 		StaleOnError:      true,
 		ReleasesRemote:    "",
+
+		UpstreamDialTimeout:           5,
+		UpstreamTLSTimeout:            0,
+		UpstreamResponseHeaderTimeout: 45,
 	}
 
 	// API -> Model -> API round-trip
 	model := r.apiToModel(ctx, original)
 	result := r.modelToAPI(ctx, model)
+
+	if result.UpstreamDialTimeout != original.UpstreamDialTimeout ||
+		result.UpstreamTLSTimeout != original.UpstreamTLSTimeout ||
+		result.UpstreamResponseHeaderTimeout != original.UpstreamResponseHeaderTimeout {
+		t.Errorf("upstream timeouts round-trip: got %d/%d/%d, want %d/%d/%d",
+			result.UpstreamDialTimeout, result.UpstreamTLSTimeout, result.UpstreamResponseHeaderTimeout,
+			original.UpstreamDialTimeout, original.UpstreamTLSTimeout, original.UpstreamResponseHeaderTimeout)
+	}
 
 	if result.Name != original.Name {
 		t.Errorf("Name: expected %s, got %s", original.Name, result.Name)
@@ -405,6 +437,7 @@ func TestRemoteResource_Schema(t *testing.T) {
 		"ban_tags_enabled", "ban_tags",
 		"quarantine_enabled", "quarantine_days",
 		"stale_on_error", "releases_remote",
+		"upstream_dial_timeout", "upstream_tls_timeout", "upstream_response_header_timeout",
 	}
 
 	for _, attr := range expectedAttrs {
