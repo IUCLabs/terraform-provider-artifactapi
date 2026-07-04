@@ -118,6 +118,31 @@ resource "artifactapi_remote_docker" "dockerhub" {
 }
 ```
 
+### Local Resources
+
+Local resources manage repositories that ArtifactAPI hosts directly (rather than
+proxying an upstream) — each is a real registry for its package type.
+
+Available resource types:
+
+- `artifactapi_local_docker` — a container registry (Docker Registry HTTP API V2, push and pull)
+- `artifactapi_local_pypi`
+- `artifactapi_local_rpm`
+- `artifactapi_local_terraform`
+
+Each takes just `name` (required, forces replacement) and an optional
+`description`.
+
+```hcl
+resource "artifactapi_local_docker" "internal" {
+  name        = "docker-internal"
+  description = "Internal container image registry"
+}
+```
+
+Images push and pull against `<endpoint>/<name>/<image>:<tag>`, e.g.
+`docker push artifactapi.example.com/docker-internal/myapp:latest`.
+
 ### Virtual Resources
 
 Virtual repositories merge multiple remotes of the same package type into a single endpoint.
