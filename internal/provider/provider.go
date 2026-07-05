@@ -71,6 +71,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		NewLocalTerraformResource,
 		NewLocalPyPIResource,
 		NewLocalRPMResource,
+		NewLocalDockerResource,
 	}
 }
 
