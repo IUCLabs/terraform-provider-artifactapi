@@ -409,6 +409,7 @@ func TestRemoteResource_Metadata(t *testing.T) {
 		{"helm", "artifactapi_remote_helm"},
 		{"pypi", "artifactapi_remote_pypi"},
 		{"npm", "artifactapi_remote_npm"},
+		{"github_rpm", "artifactapi_remote_github_rpm"},
 	}
 
 	for _, tt := range tests {
@@ -421,6 +422,34 @@ func TestRemoteResource_Metadata(t *testing.T) {
 				t.Errorf("expected %s, got %s", tt.expected, resp.TypeName)
 			}
 		})
+	}
+}
+
+func TestModelToAPI_GitHubRPM(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "github_rpm"}
+
+	model := remoteResourceModel{
+		Name:           types.StringValue("acme-tools"),
+		BaseURL:        types.StringValue("https://api.github.com/repos/acme/tools"),
+		ReleasesRemote: types.StringValue("github"),
+		MutableTTL:     types.Int64Value(3600),
+		Patterns:       stringsToList(ctx, []string{`.*\.x86_64\.rpm$`}),
+	}
+
+	api := r.modelToAPI(ctx, model)
+
+	if api.PackageType != "github_rpm" {
+		t.Errorf("PackageType: expected github_rpm, got %s", api.PackageType)
+	}
+	if api.BaseURL != "https://api.github.com/repos/acme/tools" {
+		t.Errorf("BaseURL: got %s", api.BaseURL)
+	}
+	if api.ReleasesRemote != "github" {
+		t.Errorf("ReleasesRemote: expected github, got %s", api.ReleasesRemote)
+	}
+	if len(api.Patterns) != 1 || api.Patterns[0] != `.*\.x86_64\.rpm$` {
+		t.Errorf("Patterns: got %v", api.Patterns)
 	}
 }
 
@@ -463,6 +492,7 @@ func TestNewRemoteResource_Constructors(t *testing.T) {
 		{"puppet", func() resource.Resource { return NewRemotePuppet() }, "puppet"},
 		{"terraform", func() resource.Resource { return NewRemoteTerraform() }, "terraform"},
 		{"goproxy", func() resource.Resource { return NewRemoteGoProxy() }, "goproxy"},
+		{"github_rpm", func() resource.Resource { return NewRemoteGitHubRPM() }, "github_rpm"},
 	}
 
 	for _, tt := range tests {

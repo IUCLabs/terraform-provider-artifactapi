@@ -62,6 +62,7 @@ Available resource types:
 - `artifactapi_remote_puppet`
 - `artifactapi_remote_terraform`
 - `artifactapi_remote_goproxy`
+- `artifactapi_remote_github_rpm`
 
 #### Common Attributes
 
@@ -93,11 +94,21 @@ Available resource types:
 | `ban_tags_enabled` | `false` | Enable tag banning         |
 | `ban_tags`         |         | List of tags to ban        |
 
-#### Terraform-specific Attributes
+#### Terraform / github_rpm-specific Attributes
 
 | Attribute         | Default | Description                                              |
 |-------------------|---------|----------------------------------------------------------|
-| `releases_remote` | `""`   | Name of a generic remote for download URL rewriting      |
+| `releases_remote` | `""`   | Name of a backend remote that serves the download bytes. Terraform uses it for download URL rewriting; `github_rpm` 302-redirects `.rpm` downloads to it. |
+
+#### github_rpm-specific notes
+
+`artifactapi_remote_github_rpm` exposes a GitHub repo's releases as a `dnf`/`yum`
+repository without precaching packages. Set `base_url` to the releases API root
+(`https://api.github.com/repos/{owner}/{repo}`) and `releases_remote` to a
+generic `github.com` remote that streams the `.rpm` bytes. `patterns` filters
+which release assets become packages (regex on asset filename). `password` may
+hold a token for private repos or higher API rate limits. See
+`examples/resources/artifactapi_remote_github_rpm/main.tf`.
 
 #### Example
 
