@@ -66,6 +66,7 @@ func NewRemoteAlpine() resource.Resource    { return &remoteResource{packageType
 func NewRemotePuppet() resource.Resource    { return &remoteResource{packageType: "puppet"} }
 func NewRemoteTerraform() resource.Resource { return &remoteResource{packageType: "terraform"} }
 func NewRemoteGoProxy() resource.Resource   { return &remoteResource{packageType: "goproxy"} }
+func NewRemoteGitHubRPM() resource.Resource { return &remoteResource{packageType: "github_rpm"} }
 
 func (r *remoteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_remote_" + r.packageType
@@ -145,7 +146,7 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			ElementType: types.StringType,
 		},
 		"releases_remote": schema.StringAttribute{
-			Description: "Name of the CDN remote for download URL rewriting (terraform only).",
+			Description: "Name of a backend remote that serves the actual download bytes. Used by the terraform remote (download URL rewriting) and the github_rpm remote (302 redirect of .rpm downloads to a generic github.com remote).",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"upstream_dial_timeout": schema.Int64Attribute{
