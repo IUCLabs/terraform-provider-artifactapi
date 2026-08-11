@@ -58,6 +58,7 @@ Available resource types:
 - `artifactapi_remote_pypi`
 - `artifactapi_remote_npm`
 - `artifactapi_remote_rpm`
+- `artifactapi_remote_deb`
 - `artifactapi_remote_alpine`
 - `artifactapi_remote_puppet`
 - `artifactapi_remote_terraform`
@@ -139,6 +140,7 @@ Available resource types:
 - `artifactapi_local_docker` — a container registry (Docker Registry HTTP API V2, push and pull)
 - `artifactapi_local_pypi`
 - `artifactapi_local_rpm`
+- `artifactapi_local_deb`
 - `artifactapi_local_terraform`
 
 Each takes just `name` (required, forces replacement) and an optional
