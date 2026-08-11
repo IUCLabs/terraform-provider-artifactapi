@@ -63,6 +63,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		newRemoteResource("pypi"),
 		newRemoteResource("npm"),
 		newRemoteResource("rpm"),
+		newRemoteResource("deb"),
 		newRemoteResource("alpine"),
 		newRemoteResource("puppet"),
 		newRemoteResource("terraform"),
@@ -72,6 +73,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		NewLocalTerraformResource,
 		NewLocalPyPIResource,
 		NewLocalRPMResource,
+		NewLocalDebResource,
 		NewLocalDockerResource,
 		NewLocalGenericResource,
 	}
