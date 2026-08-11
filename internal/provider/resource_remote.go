@@ -68,6 +68,7 @@ func NewRemotePuppet() resource.Resource    { return &remoteResource{packageType
 func NewRemoteTerraform() resource.Resource { return &remoteResource{packageType: "terraform"} }
 func NewRemoteGoProxy() resource.Resource   { return &remoteResource{packageType: "goproxy"} }
 func NewRemoteGitHubRPM() resource.Resource { return &remoteResource{packageType: "github_rpm"} }
+func NewRemoteGitHubDeb() resource.Resource { return &remoteResource{packageType: "github_deb"} }
 
 func (r *remoteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_remote_" + r.packageType
@@ -147,7 +148,7 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			ElementType: types.StringType,
 		},
 		"releases_remote": schema.StringAttribute{
-			Description: "Name of a backend remote that serves the actual download bytes. Used by the terraform remote (download URL rewriting) and the github_rpm remote (302 redirect of .rpm downloads to a generic github.com remote).",
+			Description: "Name of a backend remote that serves the actual download bytes. Used by the terraform remote (download URL rewriting) and the github_rpm/github_deb remotes (302 redirect of .rpm/.deb downloads to a generic github.com remote).",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"upstream_dial_timeout": schema.Int64Attribute{
