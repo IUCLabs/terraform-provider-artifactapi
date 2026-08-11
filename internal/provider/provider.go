@@ -75,6 +75,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		NewLocalPyPIResource,
 		NewLocalRPMResource,
 		NewLocalDebResource,
+		NewLocalAlpineResource,
 		NewLocalDockerResource,
 		NewLocalGenericResource,
 	}
