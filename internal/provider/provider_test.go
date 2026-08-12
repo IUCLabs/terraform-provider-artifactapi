@@ -67,7 +67,7 @@ func TestProvider_Resources(t *testing.T) {
 	resources := p.Resources(context.Background())
 
 	// 13 remote resource types + 1 virtual + local_terraform/pypi/rpm/deb/alpine/docker/generic = 21
-	expectedCount := 21
+	expectedCount := 22
 	if len(resources) != expectedCount {
 		t.Fatalf("expected %d resources, got %d", expectedCount, len(resources))
 	}
@@ -109,6 +109,7 @@ func TestProvider_Resources_ContainsExpectedTypes(t *testing.T) {
 		"artifactapi_remote_goproxy",
 		"artifactapi_remote_github_rpm",
 		"artifactapi_remote_github_deb",
+		"artifactapi_remote_github_alpine",
 		"artifactapi_virtual",
 		"artifactapi_local_terraform",
 		"artifactapi_local_pypi",

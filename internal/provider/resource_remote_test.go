@@ -411,6 +411,7 @@ func TestRemoteResource_Metadata(t *testing.T) {
 		{"npm", "artifactapi_remote_npm"},
 		{"github_rpm", "artifactapi_remote_github_rpm"},
 		{"github_deb", "artifactapi_remote_github_deb"},
+		{"github_alpine", "artifactapi_remote_github_alpine"},
 	}
 
 	for _, tt := range tests {
@@ -523,6 +524,7 @@ func TestNewRemoteResource_Constructors(t *testing.T) {
 		{"goproxy", func() resource.Resource { return NewRemoteGoProxy() }, "goproxy"},
 		{"github_rpm", func() resource.Resource { return NewRemoteGitHubRPM() }, "github_rpm"},
 		{"github_deb", func() resource.Resource { return NewRemoteGitHubDeb() }, "github_deb"},
+		{"github_alpine", func() resource.Resource { return NewRemoteGitHubAlpine() }, "github_alpine"},
 	}
 
 	for _, tt := range tests {
