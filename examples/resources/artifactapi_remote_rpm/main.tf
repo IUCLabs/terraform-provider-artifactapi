@@ -25,6 +25,10 @@ resource "artifactapi_remote_rpm" "almalinux" {
     "https://mirror.realcompute.io/almalinux",
   ]
 
+  # Load-balancing strategy across base_url + mirrorlist:
+  # "round_robin" (default) or "least_conn".
+  mirror_strategy = "least_conn"
+
   immutable_ttl = 0
   mutable_ttl   = 7200
 }

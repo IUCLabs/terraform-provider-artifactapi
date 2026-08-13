@@ -667,3 +667,156 @@ func TestValidateConfig_Mirrorlist(t *testing.T) {
 		}
 	})
 }
+
+func TestModelToAPI_MirrorStrategy(t *testing.T) {
+	ctx := context.Background()
+
+	for _, pkgType := range []string{"rpm", "deb", "alpine"} {
+		t.Run(pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			model := remoteResourceModel{
+				Name:           types.StringValue("strategy-remote"),
+				BaseURL:        types.StringValue("https://primary.example.com"),
+				MirrorStrategy: types.StringValue("least_conn"),
+			}
+			api := r.modelToAPI(ctx, model)
+			if api.MirrorStrategy != "least_conn" {
+				t.Errorf("MirrorStrategy: expected least_conn, got %q", api.MirrorStrategy)
+			}
+		})
+	}
+}
+
+func TestModelToAPI_MirrorStrategyNull(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "rpm"}
+	model := remoteResourceModel{
+		Name:           types.StringValue("no-strategy"),
+		BaseURL:        types.StringValue("https://primary.example.com"),
+		MirrorStrategy: types.StringNull(),
+	}
+	api := r.modelToAPI(ctx, model)
+	if api.MirrorStrategy != "" {
+		t.Errorf("MirrorStrategy: expected \"\" (omitted) for null, got %q", api.MirrorStrategy)
+	}
+}
+
+func TestAPIToModel_MirrorStrategy(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "rpm"}
+
+	// Round-trip: mirror_strategy survives API -> Model -> API without churn.
+	api := remoteAPI{Name: "rt", PackageType: "rpm", BaseURL: "https://primary.example.com", MirrorStrategy: "least_conn"}
+	model := r.apiToModel(ctx, api)
+	if model.MirrorStrategy.ValueString() != "least_conn" {
+		t.Errorf("MirrorStrategy round-trip: expected least_conn, got %q", model.MirrorStrategy.ValueString())
+	}
+	if got := r.modelToAPI(ctx, model); got.MirrorStrategy != "least_conn" {
+		t.Errorf("MirrorStrategy round-trip back to API: expected least_conn, got %q", got.MirrorStrategy)
+	}
+
+	// The refresh/GET path: the API stores mirror_strategy NOT NULL DEFAULT
+	// 'round_robin' and always returns it, even when the config omitted it.
+	// Read must keep round_robin in state (not collapse to null) so that a null
+	// config — which the Computed+Default schema resolves to round_robin —
+	// produces no post-apply diff. This is the perpetual-churn regression guard.
+	getResp := r.apiToModel(ctx, remoteAPI{Name: "g", PackageType: "rpm", BaseURL: "https://x", MirrorStrategy: "round_robin"})
+	if getResp.MirrorStrategy.IsNull() {
+		t.Fatal("MirrorStrategy: GET returning round_robin must not map to null (would churn every plan)")
+	}
+	if getResp.MirrorStrategy.ValueString() != "round_robin" {
+		t.Errorf("MirrorStrategy: expected round_robin from GET, got %q", getResp.MirrorStrategy.ValueString())
+	}
+
+	// A create response that omits the field settles to the server default so a
+	// Computed+Default (round_robin) attribute does not raise inconsistent-result.
+	empty := r.apiToModel(ctx, remoteAPI{Name: "e", PackageType: "rpm", BaseURL: "https://x"})
+	if empty.MirrorStrategy.ValueString() != "round_robin" {
+		t.Errorf("MirrorStrategy: expected round_robin default for empty input, got %q", empty.MirrorStrategy.ValueString())
+	}
+}
+
+func TestRemoteResource_SchemaHasMirrorStrategy(t *testing.T) {
+	r := &remoteResource{packageType: "rpm"}
+	var resp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	attr, ok := resp.Schema.Attributes["mirror_strategy"]
+	if !ok {
+		t.Fatal("missing mirror_strategy attribute in schema")
+	}
+	// Must be Computed (with a server-default) so an API-defaulted round_robin
+	// can live in state while the config is null, without a perpetual diff.
+	if !attr.IsComputed() {
+		t.Error("mirror_strategy must be Computed to hold the API's round_robin default without churn")
+	}
+	if !attr.IsOptional() {
+		t.Error("mirror_strategy must remain Optional so users can set least_conn")
+	}
+}
+
+// mirrorStrategyConfig builds a tfsdk.Config for the remote schema with every
+// attribute null except mirror_strategy, which is set to the given value (or
+// null when value is "").
+func mirrorStrategyConfig(ctx context.Context, t *testing.T, r *remoteResource, value string) tfsdk.Config {
+	t.Helper()
+	var resp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &resp)
+	objType := resp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+
+	attrs := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, at := range objType.AttributeTypes {
+		attrs[name] = tftypes.NewValue(at, nil)
+	}
+	if value != "" {
+		attrs["mirror_strategy"] = tftypes.NewValue(tftypes.String, value)
+	}
+	return tfsdk.Config{Schema: resp.Schema, Raw: tftypes.NewValue(objType, attrs)}
+}
+
+func TestValidateConfig_MirrorStrategy(t *testing.T) {
+	ctx := context.Background()
+
+	// Supported types accept a valid mirror_strategy.
+	for _, pkgType := range []string{"rpm", "deb", "alpine"} {
+		t.Run("allowed/"+pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorStrategyConfig(ctx, t, r, "least_conn")}, &resp)
+			if resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error for %s: %v", pkgType, resp.Diagnostics.Errors())
+			}
+		})
+	}
+
+	// Unsupported types reject a set mirror_strategy.
+	for _, pkgType := range []string{"docker", "pypi", "helm", "generic"} {
+		t.Run("rejected/"+pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorStrategyConfig(ctx, t, r, "round_robin")}, &resp)
+			if !resp.Diagnostics.HasError() {
+				t.Errorf("expected error setting mirror_strategy on %s remote", pkgType)
+			}
+		})
+	}
+
+	// An invalid enum value is rejected even on a supported type.
+	t.Run("invalid-value-on-rpm", func(t *testing.T) {
+		r := &remoteResource{packageType: "rpm"}
+		var resp resource.ValidateConfigResponse
+		r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorStrategyConfig(ctx, t, r, "bogus")}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("expected error for invalid mirror_strategy value on rpm")
+		}
+	})
+
+	// A null mirror_strategy is fine on any type.
+	t.Run("null-on-docker", func(t *testing.T) {
+		r := &remoteResource{packageType: "docker"}
+		var resp resource.ValidateConfigResponse
+		r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorStrategyConfig(ctx, t, r, "")}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected error for null mirror_strategy on docker: %v", resp.Diagnostics.Errors())
+		}
+	})
+}
