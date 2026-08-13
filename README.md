@@ -92,12 +92,13 @@ Available resource types:
 
 #### rpm / deb / alpine-specific Attributes
 
-| Attribute    | Default | Description                                                                                     |
-|--------------|---------|-------------------------------------------------------------------------------------------------|
-| `mirrorlist` |         | Extra upstream mirror base URLs. Requests are load-balanced with failover across `base_url` + `mirrorlist`. |
+| Attribute         | Default       | Description                                                                                     |
+|-------------------|---------------|-------------------------------------------------------------------------------------------------|
+| `mirrorlist`      |               | Extra upstream mirror base URLs. Requests are load-balanced with failover across `base_url` + `mirrorlist`. |
+| `mirror_strategy` | `round_robin` | Mirror load-balancing strategy across `base_url` + `mirrorlist`. One of `round_robin` or `least_conn`. |
 
 Only valid on the `artifactapi_remote_rpm`, `artifactapi_remote_deb`, and
-`artifactapi_remote_alpine` resources. Setting it on any other remote type is
+`artifactapi_remote_alpine` resources. Setting either on any other remote type is
 rejected at plan time.
 
 ```hcl
@@ -108,6 +109,7 @@ resource "artifactapi_remote_rpm" "epel" {
     "https://mirror-a.example.net/epel/9/Everything/x86_64",
     "https://mirror-b.example.org/epel/9/Everything/x86_64",
   ]
+  mirror_strategy = "least_conn"
 }
 ```
 

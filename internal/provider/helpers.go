@@ -15,6 +15,15 @@ func listToStrings(ctx context.Context, l types.List) []string {
 	return result
 }
 
+// stringOrNull maps an empty API string to a null attribute so an unset
+// optional string does not show a perpetual diff against a null config.
+func stringOrNull(s string) types.String {
+	if s == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(s)
+}
+
 func stringsToList(ctx context.Context, ss []string) types.List {
 	if ss == nil {
 		return types.ListNull(types.StringType)

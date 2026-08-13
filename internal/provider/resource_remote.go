@@ -22,8 +22,12 @@ var (
 )
 
 // mirrorlistPackageTypes are the remote package types for which the mirrorlist
-// attribute is valid; the API load-balances base_url + mirrorlist for these.
+// and mirror_strategy attributes are valid; the API load-balances
+// base_url + mirrorlist for these.
 var mirrorlistPackageTypes = map[string]bool{"rpm": true, "deb": true, "alpine": true}
+
+// validMirrorStrategies are the accepted mirror_strategy values.
+var validMirrorStrategies = map[string]bool{"round_robin": true, "least_conn": true}
 
 type remoteResource struct {
 	client      *apiClient
@@ -34,6 +38,7 @@ type remoteResourceModel struct {
 	Name              types.String `tfsdk:"name"`
 	BaseURL           types.String `tfsdk:"base_url"`
 	Mirrorlist        types.List   `tfsdk:"mirrorlist"`
+	MirrorStrategy    types.String `tfsdk:"mirror_strategy"`
 	Description       types.String `tfsdk:"description"`
 	Username          types.String `tfsdk:"username"`
 	Password          types.String `tfsdk:"password"`
@@ -100,6 +105,10 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			Description: "Extra upstream mirror base URLs; only valid on remote rpm/deb/apk (alpine) repos. Requests are load-balanced with failover across base_url + mirrorlist.",
 			Optional:    true,
 			ElementType: types.StringType,
+		},
+		"mirror_strategy": schema.StringAttribute{
+			Description: "Mirror load-balancing strategy across base_url + mirrorlist; only valid on remote rpm/deb/apk (alpine) repos. One of \"round_robin\" (default) or \"least_conn\".",
+			Optional:    true,
 		},
 		"description": schema.StringAttribute{
 			Optional: true, Computed: true, Default: stringdefault.StaticString(""),
@@ -285,15 +294,28 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if config.Mirrorlist.IsNull() || config.Mirrorlist.IsUnknown() {
-		return
-	}
-	if !mirrorlistPackageTypes[r.packageType] {
+	if !config.Mirrorlist.IsNull() && !config.Mirrorlist.IsUnknown() && !mirrorlistPackageTypes[r.packageType] {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("mirrorlist"),
 			"mirrorlist not supported for this remote type",
 			fmt.Sprintf("mirrorlist is only valid on remote rpm/deb/apk (alpine) repos, not %q remotes.", r.packageType),
 		)
+	}
+
+	if !config.MirrorStrategy.IsNull() && !config.MirrorStrategy.IsUnknown() {
+		if !mirrorlistPackageTypes[r.packageType] {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("mirror_strategy"),
+				"mirror_strategy not supported for this remote type",
+				fmt.Sprintf("mirror_strategy is only valid on remote rpm/deb/apk (alpine) repos, not %q remotes.", r.packageType),
+			)
+		} else if v := config.MirrorStrategy.ValueString(); !validMirrorStrategies[v] {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("mirror_strategy"),
+				"invalid mirror_strategy",
+				fmt.Sprintf("mirror_strategy must be \"round_robin\" or \"least_conn\", got %q.", v),
+			)
+		}
 	}
 }
 
@@ -326,6 +348,7 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 		UpstreamResponseHeaderTimeout: m.UpstreamResponseHeaderTimeout.ValueInt64(),
 	}
 	api.Mirrorlist = listToStrings(ctx, m.Mirrorlist)
+	api.MirrorStrategy = m.MirrorStrategy.ValueString()
 	api.Patterns = listToStrings(ctx, m.Patterns)
 	api.Blocklist = listToStrings(ctx, m.Blocklist)
 	api.MutablePatterns = listToStrings(ctx, m.MutablePatterns)
@@ -341,6 +364,7 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 		Name:              types.StringValue(api.Name),
 		BaseURL:           types.StringValue(api.BaseURL),
 		Mirrorlist:        stringsToList(ctx, api.Mirrorlist),
+		MirrorStrategy:    stringOrNull(api.MirrorStrategy),
 		Description:       types.StringValue(api.Description),
 		Username:          types.StringValue(api.Username),
 		Password:          types.StringValue(api.Password),
