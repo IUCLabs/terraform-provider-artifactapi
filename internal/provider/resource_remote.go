@@ -16,9 +16,14 @@ import (
 )
 
 var (
-	_ resource.Resource                = &remoteResource{}
-	_ resource.ResourceWithImportState = &remoteResource{}
+	_ resource.Resource                   = &remoteResource{}
+	_ resource.ResourceWithImportState    = &remoteResource{}
+	_ resource.ResourceWithValidateConfig = &remoteResource{}
 )
+
+// mirrorlistPackageTypes are the remote package types for which the mirrorlist
+// attribute is valid; the API load-balances base_url + mirrorlist for these.
+var mirrorlistPackageTypes = map[string]bool{"rpm": true, "deb": true, "alpine": true}
 
 type remoteResource struct {
 	client      *apiClient
@@ -28,6 +33,7 @@ type remoteResource struct {
 type remoteResourceModel struct {
 	Name              types.String `tfsdk:"name"`
 	BaseURL           types.String `tfsdk:"base_url"`
+	Mirrorlist        types.List   `tfsdk:"mirrorlist"`
 	Description       types.String `tfsdk:"description"`
 	Username          types.String `tfsdk:"username"`
 	Password          types.String `tfsdk:"password"`
@@ -89,6 +95,11 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		"base_url": schema.StringAttribute{
 			Description: "Upstream repository base URL.",
 			Required:    true,
+		},
+		"mirrorlist": schema.ListAttribute{
+			Description: "Extra upstream mirror base URLs; only valid on remote rpm/deb/apk (alpine) repos. Requests are load-balanced with failover across base_url + mirrorlist.",
+			Optional:    true,
+			ElementType: types.StringType,
 		},
 		"description": schema.StringAttribute{
 			Optional: true, Computed: true, Default: stringdefault.StaticString(""),
@@ -268,7 +279,26 @@ func (r *remoteResource) ImportState(ctx context.Context, req resource.ImportSta
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }
 
+func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config remoteResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if config.Mirrorlist.IsNull() || config.Mirrorlist.IsUnknown() {
+		return
+	}
+	if !mirrorlistPackageTypes[r.packageType] {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("mirrorlist"),
+			"mirrorlist not supported for this remote type",
+			fmt.Sprintf("mirrorlist is only valid on remote rpm/deb/apk (alpine) repos, not %q remotes.", r.packageType),
+		)
+	}
+}
+
 func reconcileOptionalLists(prior, current *remoteResourceModel) {
+	current.Mirrorlist = preserveListNullEmptySemantics(prior.Mirrorlist, current.Mirrorlist)
 	current.Patterns = preserveListNullEmptySemantics(prior.Patterns, current.Patterns)
 	current.Blocklist = preserveListNullEmptySemantics(prior.Blocklist, current.Blocklist)
 	current.MutablePatterns = preserveListNullEmptySemantics(prior.MutablePatterns, current.MutablePatterns)
@@ -295,6 +325,7 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 		UpstreamTLSTimeout:            m.UpstreamTLSTimeout.ValueInt64(),
 		UpstreamResponseHeaderTimeout: m.UpstreamResponseHeaderTimeout.ValueInt64(),
 	}
+	api.Mirrorlist = listToStrings(ctx, m.Mirrorlist)
 	api.Patterns = listToStrings(ctx, m.Patterns)
 	api.Blocklist = listToStrings(ctx, m.Blocklist)
 	api.MutablePatterns = listToStrings(ctx, m.MutablePatterns)
@@ -309,6 +340,7 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 	m := remoteResourceModel{
 		Name:              types.StringValue(api.Name),
 		BaseURL:           types.StringValue(api.BaseURL),
+		Mirrorlist:        stringsToList(ctx, api.Mirrorlist),
 		Description:       types.StringValue(api.Description),
 		Username:          types.StringValue(api.Username),
 		Password:          types.StringValue(api.Password),
