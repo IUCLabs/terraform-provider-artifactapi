@@ -30,6 +30,7 @@ func (d *remoteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"name":               schema.StringAttribute{Required: true},
 			"package_type":       schema.StringAttribute{Computed: true},
 			"base_url":           schema.StringAttribute{Computed: true},
+			"mirrorlist":         schema.ListAttribute{Computed: true, ElementType: types.StringType},
 			"description":        schema.StringAttribute{Computed: true},
 			"immutable_ttl":      schema.Int64Attribute{Computed: true},
 			"mutable_ttl":        schema.Int64Attribute{Computed: true},
@@ -57,6 +58,7 @@ type remoteDataSourceModel struct {
 	Name              types.String `tfsdk:"name"`
 	PackageType       types.String `tfsdk:"package_type"`
 	BaseURL           types.String `tfsdk:"base_url"`
+	Mirrorlist        types.List   `tfsdk:"mirrorlist"`
 	Description       types.String `tfsdk:"description"`
 	ImmutableTTL      types.Int64  `tfsdk:"immutable_ttl"`
 	MutableTTL        types.Int64  `tfsdk:"mutable_ttl"`
@@ -107,6 +109,7 @@ func (d *remoteDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		Name:              types.StringValue(remote.Name),
 		PackageType:       types.StringValue(remote.PackageType),
 		BaseURL:           types.StringValue(remote.BaseURL),
+		Mirrorlist:        stringsToList(ctx, remote.Mirrorlist),
 		Description:       types.StringValue(remote.Description),
 		ImmutableTTL:      types.Int64Value(remote.ImmutableTTL),
 		MutableTTL:        types.Int64Value(remote.MutableTTL),

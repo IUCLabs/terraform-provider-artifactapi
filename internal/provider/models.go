@@ -5,6 +5,7 @@ type remoteAPI struct {
 	PackageType       string   `json:"package_type"`
 	RepoType          string   `json:"repo_type,omitempty"`
 	BaseURL           string   `json:"base_url"`
+	Mirrorlist        []string `json:"mirrorlist,omitempty"`
 	Description       string   `json:"description,omitempty"`
 	Username          string   `json:"username,omitempty"`
 	Password          string   `json:"password,omitempty"`

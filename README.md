@@ -90,6 +90,27 @@ Available resource types:
 | `upstream_tls_timeout` | No     | `0`     | Upstream TLS handshake timeout in seconds (0 = server default)    |
 | `upstream_response_header_timeout` | No | `0` | Upstream response-header timeout in seconds (0 = server default) |
 
+#### rpm / deb / alpine-specific Attributes
+
+| Attribute    | Default | Description                                                                                     |
+|--------------|---------|-------------------------------------------------------------------------------------------------|
+| `mirrorlist` |         | Extra upstream mirror base URLs. Requests are load-balanced with failover across `base_url` + `mirrorlist`. |
+
+Only valid on the `artifactapi_remote_rpm`, `artifactapi_remote_deb`, and
+`artifactapi_remote_alpine` resources. Setting it on any other remote type is
+rejected at plan time.
+
+```hcl
+resource "artifactapi_remote_rpm" "epel" {
+  name     = "epel-9"
+  base_url = "https://download.example.com/pub/epel/9/Everything/x86_64"
+  mirrorlist = [
+    "https://mirror-a.example.net/epel/9/Everything/x86_64",
+    "https://mirror-b.example.org/epel/9/Everything/x86_64",
+  ]
+}
+```
+
 #### Docker-specific Attributes
 
 | Attribute          | Default | Description                |

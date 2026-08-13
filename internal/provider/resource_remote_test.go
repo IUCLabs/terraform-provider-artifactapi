@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 func TestModelToAPI_FullFields(t *testing.T) {
@@ -539,4 +541,129 @@ func TestNewRemoteResource_Constructors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestModelToAPI_Mirrorlist(t *testing.T) {
+	ctx := context.Background()
+	mirrors := []string{"https://mirror-a.example.com/rpm", "https://mirror-b.example.com/rpm"}
+
+	for _, pkgType := range []string{"rpm", "deb", "alpine"} {
+		t.Run(pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			model := remoteResourceModel{
+				Name:       types.StringValue("mirror-remote"),
+				BaseURL:    types.StringValue("https://primary.example.com"),
+				Mirrorlist: stringsToList(ctx, mirrors),
+			}
+			api := r.modelToAPI(ctx, model)
+			if len(api.Mirrorlist) != 2 || api.Mirrorlist[0] != mirrors[0] || api.Mirrorlist[1] != mirrors[1] {
+				t.Errorf("Mirrorlist: expected %v, got %v", mirrors, api.Mirrorlist)
+			}
+		})
+	}
+}
+
+func TestModelToAPI_MirrorlistNull(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "rpm"}
+	model := remoteResourceModel{
+		Name:       types.StringValue("no-mirror"),
+		BaseURL:    types.StringValue("https://primary.example.com"),
+		Mirrorlist: types.ListNull(types.StringType),
+	}
+	api := r.modelToAPI(ctx, model)
+	if api.Mirrorlist != nil {
+		t.Errorf("Mirrorlist: expected nil (omitted) for null list, got %v", api.Mirrorlist)
+	}
+}
+
+func TestAPIToModel_Mirrorlist(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "rpm"}
+	mirrors := []string{"https://mirror-a.example.com/rpm", "https://mirror-b.example.com/rpm"}
+
+	// Round-trip: mirrorlist survives API -> Model -> API without churn.
+	api := remoteAPI{Name: "rt", PackageType: "rpm", BaseURL: "https://primary.example.com", Mirrorlist: mirrors}
+	model := r.apiToModel(ctx, api)
+	got := listToStrings(ctx, model.Mirrorlist)
+	if len(got) != 2 || got[0] != mirrors[0] || got[1] != mirrors[1] {
+		t.Errorf("Mirrorlist round-trip: expected %v, got %v", mirrors, got)
+	}
+
+	// nil mirrorlist maps to a null list (not empty) to avoid perpetual diff.
+	empty := r.apiToModel(ctx, remoteAPI{Name: "e", PackageType: "rpm", BaseURL: "https://x"})
+	if !empty.Mirrorlist.IsNull() {
+		t.Errorf("Mirrorlist: expected null for nil input, got %v", empty.Mirrorlist)
+	}
+}
+
+func TestRemoteResource_SchemaHasMirrorlist(t *testing.T) {
+	r := &remoteResource{packageType: "rpm"}
+	var resp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	if _, ok := resp.Schema.Attributes["mirrorlist"]; !ok {
+		t.Fatal("missing mirrorlist attribute in schema")
+	}
+}
+
+// mirrorlistConfig builds a tfsdk.Config for the remote schema with every
+// attribute null except mirrorlist, which is set to the given values (or null
+// when values is nil).
+func mirrorlistConfig(ctx context.Context, t *testing.T, r *remoteResource, values []string) tfsdk.Config {
+	t.Helper()
+	var resp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &resp)
+	objType := resp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+
+	attrs := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, at := range objType.AttributeTypes {
+		attrs[name] = tftypes.NewValue(at, nil)
+	}
+	if values != nil {
+		elems := make([]tftypes.Value, len(values))
+		for i, v := range values {
+			elems[i] = tftypes.NewValue(tftypes.String, v)
+		}
+		attrs["mirrorlist"] = tftypes.NewValue(objType.AttributeTypes["mirrorlist"], elems)
+	}
+	return tfsdk.Config{Schema: resp.Schema, Raw: tftypes.NewValue(objType, attrs)}
+}
+
+func TestValidateConfig_Mirrorlist(t *testing.T) {
+	ctx := context.Background()
+	mirrors := []string{"https://mirror.example.com"}
+
+	// Supported types accept mirrorlist.
+	for _, pkgType := range []string{"rpm", "deb", "alpine"} {
+		t.Run("allowed/"+pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorlistConfig(ctx, t, r, mirrors)}, &resp)
+			if resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error for %s: %v", pkgType, resp.Diagnostics.Errors())
+			}
+		})
+	}
+
+	// Unsupported types reject a set mirrorlist.
+	for _, pkgType := range []string{"docker", "pypi", "helm", "generic"} {
+		t.Run("rejected/"+pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorlistConfig(ctx, t, r, mirrors)}, &resp)
+			if !resp.Diagnostics.HasError() {
+				t.Errorf("expected error setting mirrorlist on %s remote", pkgType)
+			}
+		})
+	}
+
+	// A null mirrorlist is fine on any type.
+	t.Run("null-on-docker", func(t *testing.T) {
+		r := &remoteResource{packageType: "docker"}
+		var resp resource.ValidateConfigResponse
+		r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorlistConfig(ctx, t, r, nil)}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected error for null mirrorlist on docker: %v", resp.Diagnostics.Errors())
+		}
+	})
 }
