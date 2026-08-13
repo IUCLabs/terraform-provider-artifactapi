@@ -715,10 +715,24 @@ func TestAPIToModel_MirrorStrategy(t *testing.T) {
 		t.Errorf("MirrorStrategy round-trip back to API: expected least_conn, got %q", got.MirrorStrategy)
 	}
 
-	// empty mirror_strategy maps to a null string (not "") to avoid perpetual diff.
+	// The refresh/GET path: the API stores mirror_strategy NOT NULL DEFAULT
+	// 'round_robin' and always returns it, even when the config omitted it.
+	// Read must keep round_robin in state (not collapse to null) so that a null
+	// config — which the Computed+Default schema resolves to round_robin —
+	// produces no post-apply diff. This is the perpetual-churn regression guard.
+	getResp := r.apiToModel(ctx, remoteAPI{Name: "g", PackageType: "rpm", BaseURL: "https://x", MirrorStrategy: "round_robin"})
+	if getResp.MirrorStrategy.IsNull() {
+		t.Fatal("MirrorStrategy: GET returning round_robin must not map to null (would churn every plan)")
+	}
+	if getResp.MirrorStrategy.ValueString() != "round_robin" {
+		t.Errorf("MirrorStrategy: expected round_robin from GET, got %q", getResp.MirrorStrategy.ValueString())
+	}
+
+	// A create response that omits the field settles to the server default so a
+	// Computed+Default (round_robin) attribute does not raise inconsistent-result.
 	empty := r.apiToModel(ctx, remoteAPI{Name: "e", PackageType: "rpm", BaseURL: "https://x"})
-	if !empty.MirrorStrategy.IsNull() {
-		t.Errorf("MirrorStrategy: expected null for empty input, got %q", empty.MirrorStrategy.ValueString())
+	if empty.MirrorStrategy.ValueString() != "round_robin" {
+		t.Errorf("MirrorStrategy: expected round_robin default for empty input, got %q", empty.MirrorStrategy.ValueString())
 	}
 }
 
@@ -726,8 +740,17 @@ func TestRemoteResource_SchemaHasMirrorStrategy(t *testing.T) {
 	r := &remoteResource{packageType: "rpm"}
 	var resp resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
-	if _, ok := resp.Schema.Attributes["mirror_strategy"]; !ok {
+	attr, ok := resp.Schema.Attributes["mirror_strategy"]
+	if !ok {
 		t.Fatal("missing mirror_strategy attribute in schema")
+	}
+	// Must be Computed (with a server-default) so an API-defaulted round_robin
+	// can live in state while the config is null, without a perpetual diff.
+	if !attr.IsComputed() {
+		t.Error("mirror_strategy must be Computed to hold the API's round_robin default without churn")
+	}
+	if !attr.IsOptional() {
+		t.Error("mirror_strategy must remain Optional so users can set least_conn")
 	}
 }
 

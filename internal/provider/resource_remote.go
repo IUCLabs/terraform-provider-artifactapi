@@ -26,6 +26,10 @@ var (
 // base_url + mirrorlist for these.
 var mirrorlistPackageTypes = map[string]bool{"rpm": true, "deb": true, "alpine": true}
 
+// defaultMirrorStrategy is the API's server-side default for mirror_strategy
+// (stored NOT NULL DEFAULT 'round_robin' and always echoed back on read).
+const defaultMirrorStrategy = "round_robin"
+
 // validMirrorStrategies are the accepted mirror_strategy values.
 var validMirrorStrategies = map[string]bool{"round_robin": true, "least_conn": true}
 
@@ -108,7 +112,7 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		},
 		"mirror_strategy": schema.StringAttribute{
 			Description: "Mirror load-balancing strategy across base_url + mirrorlist; only valid on remote rpm/deb/apk (alpine) repos. One of \"round_robin\" (default) or \"least_conn\".",
-			Optional:    true,
+			Optional:    true, Computed: true, Default: stringdefault.StaticString(defaultMirrorStrategy),
 		},
 		"description": schema.StringAttribute{
 			Optional: true, Computed: true, Default: stringdefault.StaticString(""),
@@ -359,12 +363,22 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 	return api
 }
 
+// mirrorStrategyOrDefault normalizes the API's mirror_strategy to the server
+// default when empty (e.g. an older create response), so a Computed+Default
+// attribute settles to round_robin instead of an inconsistent-result error.
+func mirrorStrategyOrDefault(s string) string {
+	if s == "" {
+		return defaultMirrorStrategy
+	}
+	return s
+}
+
 func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteResourceModel {
 	m := remoteResourceModel{
 		Name:              types.StringValue(api.Name),
 		BaseURL:           types.StringValue(api.BaseURL),
 		Mirrorlist:        stringsToList(ctx, api.Mirrorlist),
-		MirrorStrategy:    stringOrNull(api.MirrorStrategy),
+		MirrorStrategy:    types.StringValue(mirrorStrategyOrDefault(api.MirrorStrategy)),
 		Description:       types.StringValue(api.Description),
 		Username:          types.StringValue(api.Username),
 		Password:          types.StringValue(api.Password),
