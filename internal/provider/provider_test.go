@@ -65,9 +65,9 @@ func TestProvider_Schema(t *testing.T) {
 func TestProvider_Resources(t *testing.T) {
 	p := &ArtifactAPIProvider{version: "1.0.0"}
 	resources := p.Resources(context.Background())
+
 	// 15 remote resource types + 1 virtual + 7 local = 23
-	// 13 remote resource types + 1 virtual + local_terraform/pypi/rpm/deb/alpine/docker/generic = 21
-	expectedCount := 22
+	expectedCount := 23
 	if len(resources) != expectedCount {
 		t.Fatalf("expected %d resources, got %d", expectedCount, len(resources))
 	}
