@@ -68,6 +68,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		newRemoteResource("puppet"),
 		newRemoteResource("terraform"),
 		newRemoteResource("goproxy"),
+		newRemoteResource("cargo"),
 		newRemoteResource("github_rpm"),
 		newRemoteResource("github_deb"),
 		newRemoteResource("github_alpine"),

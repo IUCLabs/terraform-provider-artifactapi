@@ -82,6 +82,7 @@ func NewRemoteAlpine() resource.Resource    { return &remoteResource{packageType
 func NewRemotePuppet() resource.Resource    { return &remoteResource{packageType: "puppet"} }
 func NewRemoteTerraform() resource.Resource { return &remoteResource{packageType: "terraform"} }
 func NewRemoteGoProxy() resource.Resource   { return &remoteResource{packageType: "goproxy"} }
+func NewRemoteCargo() resource.Resource     { return &remoteResource{packageType: "cargo"} }
 func NewRemoteGitHubRPM() resource.Resource { return &remoteResource{packageType: "github_rpm"} }
 func NewRemoteGitHubDeb() resource.Resource { return &remoteResource{packageType: "github_deb"} }
 func NewRemoteGitHubAlpine() resource.Resource {
