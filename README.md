@@ -37,12 +37,14 @@ terraform {
 
 provider "artifactapi" {
   endpoint = "https://artifactapi.example.com"
+  token    = var.artifactapi_token # optional
 }
 ```
 
-| Attribute  | Required | Description                          |
-|------------|----------|--------------------------------------|
-| `endpoint` | Yes      | ArtifactAPI server endpoint URL      |
+| Attribute  | Required | Description                                                                  |
+|------------|----------|------------------------------------------------------------------------------|
+| `endpoint` | Yes      | ArtifactAPI server endpoint URL                                              |
+| `token`    | No       | Bearer token sent as `Authorization` header; falls back to `ARTIFACTAPI_TOKEN` |
 
 ## Resources
 

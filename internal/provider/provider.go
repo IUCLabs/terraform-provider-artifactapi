@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -18,6 +19,7 @@ type ArtifactAPIProvider struct {
 
 type artifactAPIProviderModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
+	Token    types.String `tfsdk:"token"`
 }
 
 func New(version string) func() provider.Provider {
@@ -39,6 +41,11 @@ func (p *ArtifactAPIProvider) Schema(_ context.Context, _ provider.SchemaRequest
 				Description: "The ArtifactAPI server endpoint URL (e.g. https://artifactapi.example.com).",
 				Required:    true,
 			},
+			"token": schema.StringAttribute{
+				Description: "Bearer token sent as the Authorization header. Falls back to the ARTIFACTAPI_TOKEN environment variable.",
+				Optional:    true,
+				Sensitive:   true,
+			},
 		},
 	}
 }
@@ -51,6 +58,10 @@ func (p *ArtifactAPIProvider) Configure(ctx context.Context, req provider.Config
 	}
 
 	client := newAPIClient(config.Endpoint.ValueString())
+	client.token = config.Token.ValueString()
+	if client.token == "" {
+		client.token = os.Getenv("ARTIFACTAPI_TOKEN")
+	}
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
