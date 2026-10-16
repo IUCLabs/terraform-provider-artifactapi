@@ -196,6 +196,7 @@ Available resource types:
 - `artifactapi_local_rpm`
 - `artifactapi_local_deb`
 - `artifactapi_local_alpine`
+- `artifactapi_local_puppet` — a Puppet Forge (v3 API for `puppet module install`, r10k and g10k)
 - `artifactapi_local_terraform`
 
 Each takes just `name` (required, forces replacement) and an optional
