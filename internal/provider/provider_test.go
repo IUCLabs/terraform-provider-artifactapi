@@ -67,7 +67,7 @@ func TestProvider_Resources(t *testing.T) {
 	resources := p.Resources(context.Background())
 
 	// 15 remote resource types + 1 virtual + 7 local = 23
-	expectedCount := 23
+	expectedCount := 24
 	if len(resources) != expectedCount {
 		t.Fatalf("expected %d resources, got %d", expectedCount, len(resources))
 	}
@@ -117,6 +117,7 @@ func TestProvider_Resources_ContainsExpectedTypes(t *testing.T) {
 		"artifactapi_local_rpm",
 		"artifactapi_local_deb",
 		"artifactapi_local_alpine",
+		"artifactapi_local_helm",
 		"artifactapi_local_docker",
 		"artifactapi_local_generic",
 	}

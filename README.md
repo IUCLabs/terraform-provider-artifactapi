@@ -196,6 +196,7 @@ Available resource types:
 - `artifactapi_local_rpm`
 - `artifactapi_local_deb`
 - `artifactapi_local_alpine`
+- `artifactapi_local_helm` — a chart repository (index.yaml generated from uploaded charts)
 - `artifactapi_local_terraform`
 
 Each takes just `name` (required, forces replacement) and an optional
