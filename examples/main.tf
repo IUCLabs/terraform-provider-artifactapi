@@ -9,6 +9,7 @@ terraform {
 
 provider "artifactapi" {
   endpoint = "https://artifactapi.k8s.syd1.au.unkin.net"
+  # token is read from ARTIFACTAPI_TOKEN when unset
 }
 
 # ---------------------------------------------------------------------------

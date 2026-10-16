@@ -11,6 +11,7 @@ import (
 
 type apiClient struct {
 	baseURL    string
+	token      string
 	httpClient *http.Client
 }
 
@@ -53,6 +54,9 @@ func (c *apiClient) do(ctx context.Context, method, path string, body, out any) 
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
 	resp, err := c.httpClient.Do(req)
