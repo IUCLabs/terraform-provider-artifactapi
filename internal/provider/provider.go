@@ -91,6 +91,7 @@ func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Res
 		NewLocalAlpineResource,
 		NewLocalDockerResource,
 		NewLocalGenericResource,
+		NewLocalGoProxyResource,
 	}
 }
 

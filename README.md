@@ -197,6 +197,7 @@ Available resource types:
 - `artifactapi_local_deb`
 - `artifactapi_local_alpine`
 - `artifactapi_local_terraform`
+- `artifactapi_local_goproxy` — a Go module proxy (GOPROXY protocol) for private modules
 
 Each takes just `name` (required, forces replacement) and an optional
 `description`.
