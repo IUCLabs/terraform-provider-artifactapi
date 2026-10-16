@@ -66,6 +66,7 @@ Available resource types:
 - `artifactapi_remote_terraform`
 - `artifactapi_remote_goproxy`
 - `artifactapi_remote_cargo`
+- `artifactapi_remote_ansible`
 - `artifactapi_remote_github_rpm`
 - `artifactapi_remote_github_deb`
 - `artifactapi_remote_github_alpine`
