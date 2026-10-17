@@ -29,6 +29,8 @@ type virtualResourceModel struct {
 	Members     types.List   `tfsdk:"members"`
 }
 
+func init() { registerResource(NewVirtualResource) }
+
 func NewVirtualResource() resource.Resource {
 	return &virtualResource{}
 }

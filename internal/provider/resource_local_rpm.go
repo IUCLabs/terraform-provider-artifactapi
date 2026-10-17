@@ -27,6 +27,8 @@ type localRPMResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalRPMResource) }
+
 func NewLocalRPMResource() resource.Resource {
 	return &localRPMResource{}
 }

@@ -27,6 +27,8 @@ type localHelmResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalHelmResource) }
+
 func NewLocalHelmResource() resource.Resource {
 	return &localHelmResource{}
 }
