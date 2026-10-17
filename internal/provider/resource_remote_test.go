@@ -165,6 +165,7 @@ func TestModelToAPI_PackageTypeFromResource(t *testing.T) {
 		{"goproxy"},
 		{"cargo"},
 		{"ansible"},
+		{"gems"},
 	}
 
 	for _, tt := range tests {
@@ -528,6 +529,7 @@ func TestNewRemoteResource_Constructors(t *testing.T) {
 		{"goproxy", func() resource.Resource { return NewRemoteGoProxy() }, "goproxy"},
 		{"cargo", func() resource.Resource { return NewRemoteCargo() }, "cargo"},
 		{"ansible", func() resource.Resource { return NewRemoteAnsible() }, "ansible"},
+		{"gems", func() resource.Resource { return NewRemoteGems() }, "gems"},
 		{"github_rpm", func() resource.Resource { return NewRemoteGitHubRPM() }, "github_rpm"},
 		{"github_deb", func() resource.Resource { return NewRemoteGitHubDeb() }, "github_deb"},
 		{"github_alpine", func() resource.Resource { return NewRemoteGitHubAlpine() }, "github_alpine"},
