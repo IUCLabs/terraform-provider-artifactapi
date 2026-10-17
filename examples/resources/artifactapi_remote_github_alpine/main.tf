@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     artifactapi = {
-      source  = "git.unkin.net/unkin/artifactapi"
+      source  = "artifactapi.example.com/terraform-unkin/artifactapi"
       version = "0.0.1"
     }
   }

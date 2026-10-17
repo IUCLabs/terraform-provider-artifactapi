@@ -29,7 +29,7 @@ This places the binary at `~/.terraform.d/plugins/git.unkin.net/unkin/artifactap
 terraform {
   required_providers {
     artifactapi = {
-      source  = "git.unkin.net/unkin/artifactapi"
+      source  = "artifactapi.example.com/terraform-unkin/artifactapi"
       version = "0.0.1"
     }
   }
