@@ -23,13 +23,15 @@ make install
 
 This places the binary at `~/.terraform.d/plugins/git.unkin.net/unkin/artifactapi/<version>/<os_arch>/`.
 
+A `make install` build is referenced with `source = "git.unkin.net/unkin/artifactapi"` (the provider address, matching that path); the `artifactapi.example.com/terraform-unkin/artifactapi` source below is for installing from an artifactapi registry.
+
 ## Provider Configuration
 
 ```hcl
 terraform {
   required_providers {
     artifactapi = {
-      source  = "git.unkin.net/unkin/artifactapi"
+      source  = "artifactapi.example.com/terraform-unkin/artifactapi"
       version = "0.0.1"
     }
   }
