@@ -66,7 +66,7 @@ func TestProvider_Resources(t *testing.T) {
 	p := &ArtifactAPIProvider{version: "1.0.0"}
 	resources := p.Resources(context.Background())
 
-	// 15 remote resource types + 1 virtual + 7 local = 23
+	// 15 remote resource types + 1 virtual + 8 local = 24
 	expectedCount := 24
 	if len(resources) != expectedCount {
 		t.Fatalf("expected %d resources, got %d", expectedCount, len(resources))
