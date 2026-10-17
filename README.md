@@ -193,6 +193,7 @@ Available resource types:
 
 - `artifactapi_local_docker` — a container registry (Docker Registry HTTP API V2, push and pull)
 - `artifactapi_local_pypi`
+- `artifactapi_local_npm` — an npm registry (`npm publish` and `npm install`)
 - `artifactapi_local_rpm`
 - `artifactapi_local_deb`
 - `artifactapi_local_alpine`
