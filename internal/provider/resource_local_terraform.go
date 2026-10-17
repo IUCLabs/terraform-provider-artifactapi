@@ -27,6 +27,8 @@ type localTerraformResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalTerraformResource) }
+
 func NewLocalTerraformResource() resource.Resource {
 	return &localTerraformResource{}
 }

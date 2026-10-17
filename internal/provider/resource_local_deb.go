@@ -27,6 +27,8 @@ type localDebResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalDebResource) }
+
 func NewLocalDebResource() resource.Resource {
 	return &localDebResource{}
 }

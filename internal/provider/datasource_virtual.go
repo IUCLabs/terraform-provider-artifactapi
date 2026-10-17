@@ -15,6 +15,8 @@ type virtualDataSource struct {
 	client *apiClient
 }
 
+func init() { registerDataSource(NewVirtualDataSource) }
+
 func NewVirtualDataSource() datasource.DataSource {
 	return &virtualDataSource{}
 }
