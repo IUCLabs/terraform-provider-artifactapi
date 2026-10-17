@@ -27,6 +27,8 @@ type localNPMResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalNPMResource) }
+
 func NewLocalNPMResource() resource.Resource {
 	return &localNPMResource{}
 }

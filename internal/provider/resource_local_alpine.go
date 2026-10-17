@@ -27,6 +27,8 @@ type localAlpineResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalAlpineResource) }
+
 func NewLocalAlpineResource() resource.Resource {
 	return &localAlpineResource{}
 }

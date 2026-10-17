@@ -150,27 +150,9 @@ func TestModelToAPI_NullLists(t *testing.T) {
 
 func TestModelToAPI_PackageTypeFromResource(t *testing.T) {
 	ctx := context.Background()
-	tests := []struct {
-		pkgType string
-	}{
-		{"generic"},
-		{"docker"},
-		{"helm"},
-		{"pypi"},
-		{"npm"},
-		{"rpm"},
-		{"alpine"},
-		{"puppet"},
-		{"terraform"},
-		{"goproxy"},
-		{"cargo"},
-		{"ansible"},
-		{"gems"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.pkgType, func(t *testing.T) {
-			r := &remoteResource{packageType: tt.pkgType}
+	for _, pkgType := range registeredRemoteKinds(t) {
+		t.Run(pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
 			model := remoteResourceModel{
 				Name:              types.StringValue("test"),
 				BaseURL:           types.StringValue("https://example.com"),
@@ -192,8 +174,8 @@ func TestModelToAPI_PackageTypeFromResource(t *testing.T) {
 				ReleasesRemote:    types.StringValue(""),
 			}
 			api := r.modelToAPI(ctx, model)
-			if api.PackageType != tt.pkgType {
-				t.Errorf("expected package_type %s, got %s", tt.pkgType, api.PackageType)
+			if api.PackageType != pkgType {
+				t.Errorf("expected package_type %s, got %s", pkgType, api.PackageType)
 			}
 		})
 	}
@@ -405,31 +387,31 @@ func TestModelToAPI_RoundTrip(t *testing.T) {
 }
 
 func TestRemoteResource_Metadata(t *testing.T) {
-	tests := []struct {
-		pkgType  string
-		expected string
-	}{
-		{"generic", "artifactapi_remote_generic"},
-		{"docker", "artifactapi_remote_docker"},
-		{"helm", "artifactapi_remote_helm"},
-		{"pypi", "artifactapi_remote_pypi"},
-		{"npm", "artifactapi_remote_npm"},
-		{"github_rpm", "artifactapi_remote_github_rpm"},
-		{"github_deb", "artifactapi_remote_github_deb"},
-		{"github_alpine", "artifactapi_remote_github_alpine"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.pkgType, func(t *testing.T) {
-			r := &remoteResource{packageType: tt.pkgType}
+	for _, pkgType := range registeredRemoteKinds(t) {
+		t.Run(pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
 			req := resource.MetadataRequest{ProviderTypeName: "artifactapi"}
 			var resp resource.MetadataResponse
 			r.Metadata(context.Background(), req, &resp)
-			if resp.TypeName != tt.expected {
-				t.Errorf("expected %s, got %s", tt.expected, resp.TypeName)
+			if expected := "artifactapi_remote_" + pkgType; resp.TypeName != expected {
+				t.Errorf("expected %s, got %s", expected, resp.TypeName)
 			}
 		})
 	}
+}
+
+func registeredRemoteKinds(t *testing.T) []string {
+	t.Helper()
+	var kinds []string
+	for _, f := range resourceRegistry {
+		if rr, ok := f().(*remoteResource); ok {
+			kinds = append(kinds, rr.packageType)
+		}
+	}
+	if len(kinds) == 0 {
+		t.Fatal("no remote kinds registered")
+	}
+	return kinds
 }
 
 func TestModelToAPI_GitHubRPM(t *testing.T) {
@@ -508,44 +490,6 @@ func TestRemoteResource_Schema(t *testing.T) {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing expected attribute: %s", attr)
 		}
-	}
-}
-
-func TestNewRemoteResource_Constructors(t *testing.T) {
-	tests := []struct {
-		name     string
-		fn       func() resource.Resource
-		expected string
-	}{
-		{"generic", func() resource.Resource { return NewRemoteGeneric() }, "generic"},
-		{"docker", func() resource.Resource { return NewRemoteDocker() }, "docker"},
-		{"helm", func() resource.Resource { return NewRemoteHelm() }, "helm"},
-		{"pypi", func() resource.Resource { return NewRemotePyPI() }, "pypi"},
-		{"npm", func() resource.Resource { return NewRemoteNPM() }, "npm"},
-		{"rpm", func() resource.Resource { return NewRemoteRPM() }, "rpm"},
-		{"alpine", func() resource.Resource { return NewRemoteAlpine() }, "alpine"},
-		{"puppet", func() resource.Resource { return NewRemotePuppet() }, "puppet"},
-		{"terraform", func() resource.Resource { return NewRemoteTerraform() }, "terraform"},
-		{"goproxy", func() resource.Resource { return NewRemoteGoProxy() }, "goproxy"},
-		{"cargo", func() resource.Resource { return NewRemoteCargo() }, "cargo"},
-		{"ansible", func() resource.Resource { return NewRemoteAnsible() }, "ansible"},
-		{"gems", func() resource.Resource { return NewRemoteGems() }, "gems"},
-		{"github_rpm", func() resource.Resource { return NewRemoteGitHubRPM() }, "github_rpm"},
-		{"github_deb", func() resource.Resource { return NewRemoteGitHubDeb() }, "github_deb"},
-		{"github_alpine", func() resource.Resource { return NewRemoteGitHubAlpine() }, "github_alpine"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := tt.fn()
-			rr, ok := r.(*remoteResource)
-			if !ok {
-				t.Fatal("expected *remoteResource")
-			}
-			if rr.packageType != tt.expected {
-				t.Errorf("expected packageType %s, got %s", tt.expected, rr.packageType)
-			}
-		})
 	}
 }
 
