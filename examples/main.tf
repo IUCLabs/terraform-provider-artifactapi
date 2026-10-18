@@ -1,14 +1,14 @@
 terraform {
   required_providers {
     artifactapi = {
-      source  = "git.unkin.net/unkin/artifactapi"
+      source  = "artifactapi.example.com/terraform-unkin/artifactapi"
       version = "0.0.1"
     }
   }
 }
 
 provider "artifactapi" {
-  endpoint = "https://artifactapi.k8s.syd1.au.unkin.net"
+  endpoint = "https://artifactapi.example.com"
   # token is read from ARTIFACTAPI_TOKEN when unset
 }
 

@@ -27,6 +27,8 @@ type localGoProxyResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalGoProxyResource) }
+
 func NewLocalGoProxyResource() resource.Resource {
 	return &localGoProxyResource{}
 }

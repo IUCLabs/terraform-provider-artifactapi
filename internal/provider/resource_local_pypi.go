@@ -27,6 +27,8 @@ type localPyPIResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalPyPIResource) }
+
 func NewLocalPyPIResource() resource.Resource {
 	return &localPyPIResource{}
 }

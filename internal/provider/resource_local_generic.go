@@ -27,6 +27,8 @@ type localGenericResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalGenericResource) }
+
 func NewLocalGenericResource() resource.Resource {
 	return &localGenericResource{}
 }

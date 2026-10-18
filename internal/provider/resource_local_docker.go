@@ -27,6 +27,8 @@ type localDockerResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalDockerResource) }
+
 func NewLocalDockerResource() resource.Resource {
 	return &localDockerResource{}
 }
