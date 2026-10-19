@@ -15,6 +15,8 @@ type remoteDataSource struct {
 	client *apiClient
 }
 
+func init() { registerDataSource(NewRemoteDataSource) }
+
 func NewRemoteDataSource() datasource.DataSource {
 	return &remoteDataSource{}
 }

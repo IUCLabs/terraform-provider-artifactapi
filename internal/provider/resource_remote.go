@@ -71,25 +71,6 @@ func newRemoteResource(packageType string) func() resource.Resource {
 	}
 }
 
-func NewRemoteGeneric() resource.Resource   { return &remoteResource{packageType: "generic"} }
-func NewRemoteDocker() resource.Resource    { return &remoteResource{packageType: "docker"} }
-func NewRemoteHelm() resource.Resource      { return &remoteResource{packageType: "helm"} }
-func NewRemotePyPI() resource.Resource      { return &remoteResource{packageType: "pypi"} }
-func NewRemoteNPM() resource.Resource       { return &remoteResource{packageType: "npm"} }
-func NewRemoteRPM() resource.Resource       { return &remoteResource{packageType: "rpm"} }
-func NewRemoteDeb() resource.Resource       { return &remoteResource{packageType: "deb"} }
-func NewRemoteAlpine() resource.Resource    { return &remoteResource{packageType: "alpine"} }
-func NewRemotePuppet() resource.Resource    { return &remoteResource{packageType: "puppet"} }
-func NewRemoteTerraform() resource.Resource { return &remoteResource{packageType: "terraform"} }
-func NewRemoteGoProxy() resource.Resource   { return &remoteResource{packageType: "goproxy"} }
-func NewRemoteCargo() resource.Resource     { return &remoteResource{packageType: "cargo"} }
-func NewRemoteGems() resource.Resource      { return &remoteResource{packageType: "gems"} }
-func NewRemoteGitHubRPM() resource.Resource { return &remoteResource{packageType: "github_rpm"} }
-func NewRemoteGitHubDeb() resource.Resource { return &remoteResource{packageType: "github_deb"} }
-func NewRemoteGitHubAlpine() resource.Resource {
-	return &remoteResource{packageType: "github_alpine"}
-}
-
 func (r *remoteResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_remote_" + r.packageType
 }

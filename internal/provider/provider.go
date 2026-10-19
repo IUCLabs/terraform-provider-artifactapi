@@ -67,39 +67,9 @@ func (p *ArtifactAPIProvider) Configure(ctx context.Context, req provider.Config
 }
 
 func (p *ArtifactAPIProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		newRemoteResource("generic"),
-		newRemoteResource("docker"),
-		newRemoteResource("helm"),
-		newRemoteResource("pypi"),
-		newRemoteResource("npm"),
-		newRemoteResource("rpm"),
-		newRemoteResource("deb"),
-		newRemoteResource("alpine"),
-		newRemoteResource("puppet"),
-		newRemoteResource("terraform"),
-		newRemoteResource("goproxy"),
-		newRemoteResource("cargo"),
-		newRemoteResource("gems"),
-		newRemoteResource("github_rpm"),
-		newRemoteResource("github_deb"),
-		newRemoteResource("github_alpine"),
-		NewVirtualResource,
-		NewLocalTerraformResource,
-		NewLocalPyPIResource,
-		NewLocalNPMResource,
-		NewLocalRPMResource,
-		NewLocalDebResource,
-		NewLocalAlpineResource,
-		NewLocalPuppetResource,
-		NewLocalDockerResource,
-		NewLocalGenericResource,
-	}
+	return sortedByTypeName(resourceRegistry, resourceTypeName)
 }
 
 func (p *ArtifactAPIProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewRemoteDataSource,
-		NewVirtualDataSource,
-	}
+	return sortedByTypeName(dataSourceRegistry, dataSourceTypeName)
 }

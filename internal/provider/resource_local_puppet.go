@@ -27,6 +27,8 @@ type localPuppetResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+func init() { registerResource(NewLocalPuppetResource) }
+
 func NewLocalPuppetResource() resource.Resource {
 	return &localPuppetResource{}
 }
