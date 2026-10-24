@@ -1,6 +1,6 @@
 # `artifactapi_remote_vcs`
 
-Per-type remote resources manage upstream repository proxies. Each type applies its own mutability classification rules automatically (e.g., Docker classifies tag manifests as mutable and blobs as immutable; Helm classifies `index.yaml` as mutable).
+Caches GitHub (`base_url = "https://github.com"`) or Gitea source archives and release assets. Tag, commit and release-download paths are immutable; branch archives redirect to the archive of the branch's current commit, re-resolved after `mutable_ttl`. Paths: [vcs remote](https://git.unkin.net/unkin/artifactapi/src/branch/master/docs/vcs/remote.md).
 
 ## Common Attributes
 
