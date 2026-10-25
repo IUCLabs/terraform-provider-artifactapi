@@ -857,16 +857,29 @@ func remoteConfig(ctx context.Context, t *testing.T, r *remoteResource, set map[
 
 func TestValidateConfig_CacheRepodata(t *testing.T) {
 	ctx := context.Background()
-	set := map[string]tftypes.Value{"cache_repodata": tftypes.NewValue(tftypes.Bool, true)}
-
-	cases := map[string]bool{"github_rpm": false, "github_deb": true, "github_alpine": true, "rpm": true, "docker": true}
-	for pkgType, wantErr := range cases {
-		t.Run(pkgType, func(t *testing.T) {
-			r := &remoteResource{packageType: pkgType}
+	cases := []struct {
+		pkgType string
+		value   bool
+		wantErr bool
+	}{
+		{"github_rpm", true, false},
+		{"github_rpm", false, false},
+		{"github_deb", true, true},
+		{"github_alpine", true, true},
+		{"rpm", true, true},
+		{"docker", true, true},
+		{"github_deb", false, false},
+		{"rpm", false, false},
+		{"docker", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s/%v", tc.pkgType, tc.value), func(t *testing.T) {
+			r := &remoteResource{packageType: tc.pkgType}
+			set := map[string]tftypes.Value{"cache_repodata": tftypes.NewValue(tftypes.Bool, tc.value)}
 			var resp resource.ValidateConfigResponse
 			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: remoteConfig(ctx, t, r, set)}, &resp)
-			if resp.Diagnostics.HasError() != wantErr {
-				t.Errorf("cache_repodata on %s: wantErr=%v, got %v", pkgType, wantErr, resp.Diagnostics.Errors())
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Errorf("wantErr=%v, got %v", tc.wantErr, resp.Diagnostics.Errors())
 			}
 		})
 	}
@@ -885,7 +898,10 @@ func TestValidateConfig_SyncInterval(t *testing.T) {
 		{"github_rpm", -1, true},
 		{"github_rpm", maxSyncInterval + 1, true},
 		{"rpm", 3600, true},
-		{"docker", 0, true},
+		{"docker", 1, true},
+		{"rpm", 0, false},
+		{"docker", 0, false},
+		{"docker", -1, true},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%s/%d", tc.pkgType, tc.value), func(t *testing.T) {

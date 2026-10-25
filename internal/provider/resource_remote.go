@@ -327,7 +327,7 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 		}
 	}
 
-	if !config.CacheRepodata.IsNull() && !config.CacheRepodata.IsUnknown() && r.packageType != "github_rpm" {
+	if !config.CacheRepodata.IsNull() && !config.CacheRepodata.IsUnknown() && config.CacheRepodata.ValueBool() && r.packageType != "github_rpm" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("cache_repodata"),
 			"cache_repodata not supported for this remote type",
@@ -336,17 +336,17 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 	}
 
 	if !config.SyncInterval.IsNull() && !config.SyncInterval.IsUnknown() {
-		if !syncIntervalPackageTypes[r.packageType] {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("sync_interval"),
-				"sync_interval not supported for this remote type",
-				fmt.Sprintf("sync_interval is only valid on github_rpm/github_deb/github_alpine remotes, not %q remotes.", r.packageType),
-			)
-		} else if v := config.SyncInterval.ValueInt64(); v < 0 || v > maxSyncInterval {
+		if v := config.SyncInterval.ValueInt64(); v < 0 || v > maxSyncInterval {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("sync_interval"),
 				"invalid sync_interval",
 				fmt.Sprintf("sync_interval must be between 0 and %d seconds, got %d.", maxSyncInterval, v),
+			)
+		} else if v > 0 && !syncIntervalPackageTypes[r.packageType] {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("sync_interval"),
+				"sync_interval not supported for this remote type",
+				fmt.Sprintf("sync_interval is only valid on github_rpm/github_deb/github_alpine remotes, not %q remotes.", r.packageType),
 			)
 		}
 	}
