@@ -22,6 +22,9 @@ type remoteAPI struct {
 	QuarantineEnabled bool     `json:"quarantine_enabled"`
 	QuarantineDays    int64    `json:"quarantine_days"`
 	StaleOnError      bool     `json:"stale_on_error"`
+	ServeStale        bool     `json:"serve_stale"`
+	CacheRepodata     bool     `json:"cache_repodata"`
+	SyncInterval      int64    `json:"sync_interval"`
 	ReleasesRemote    string   `json:"releases_remote,omitempty"`
 	ManagedBy         string   `json:"managed_by,omitempty"`
 
@@ -31,9 +34,10 @@ type remoteAPI struct {
 }
 
 type virtualAPI struct {
-	Name        string   `json:"name"`
-	PackageType string   `json:"package_type"`
-	Description string   `json:"description,omitempty"`
-	Members     []string `json:"members"`
-	ManagedBy   string   `json:"managed_by,omitempty"`
+	Name          string   `json:"name"`
+	PackageType   string   `json:"package_type"`
+	Description   string   `json:"description,omitempty"`
+	Members       []string `json:"members"`
+	ManagedBy     string   `json:"managed_by,omitempty"`
+	ParallelFetch bool     `json:"parallel_fetch"`
 }

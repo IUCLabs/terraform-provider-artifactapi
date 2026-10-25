@@ -2,9 +2,13 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -110,10 +114,16 @@ func TestVirtualRoundTrip(t *testing.T) {
 		PackageType: "helm",
 		Description: "Round trip test",
 		Members:     []string{"a", "b", "c"},
+
+		ParallelFetch: true,
 	}
 
 	model := virtualAPIToModel(ctx, original)
 	result := virtualModelToAPI(ctx, model)
+
+	if !model.ParallelFetch.ValueBool() || !result.ParallelFetch {
+		t.Errorf("ParallelFetch: expected true through the round trip, got model=%v api=%v", model.ParallelFetch, result.ParallelFetch)
+	}
 
 	if result.Name != original.Name {
 		t.Errorf("Name: expected %s, got %s", original.Name, result.Name)
@@ -150,11 +160,32 @@ func TestVirtualResource_Schema(t *testing.T) {
 	var resp resource.SchemaResponse
 	r.Schema(context.Background(), req, &resp)
 
-	expectedAttrs := []string{"name", "package_type", "description", "members"}
+	expectedAttrs := []string{"name", "package_type", "description", "members", "parallel_fetch"}
 	for _, attr := range expectedAttrs {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing expected attribute: %s", attr)
 		}
+	}
+
+	pf := resp.Schema.Attributes["parallel_fetch"].(schema.BoolAttribute)
+	if !pf.IsOptional() || !pf.IsComputed() {
+		t.Error("parallel_fetch must be Optional+Computed")
+	}
+	var d defaults.BoolResponse
+	pf.Default.DefaultBool(context.Background(), defaults.BoolRequest{}, &d)
+	if d.PlanValue.ValueBool() {
+		t.Error("parallel_fetch: expected default false")
+	}
+}
+
+func TestVirtualModelToAPI_SendsParallelFetchFalse(t *testing.T) {
+	ctx := context.Background()
+	body, err := json.Marshal(virtualModelToAPI(ctx, virtualResourceModel{ParallelFetch: types.BoolValue(false)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"parallel_fetch":false`) {
+		t.Errorf("request body must carry parallel_fetch=false for the full-replace PUT: %s", body)
 	}
 }
 

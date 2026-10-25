@@ -33,6 +33,12 @@ resource "artifactapi_remote_github_rpm" "acme_tools" {
 
   mutable_ttl = 3600
 
+  # Optional: re-scan releases every 15 minutes, cache the generated repodata,
+  # and let virtuals serve the last good index while this remote refreshes.
+  sync_interval  = 900
+  cache_repodata = true
+  serve_stale    = true
+
   # Optional: restrict which release assets become packages.
   patterns = [
     ".*\\.x86_64\\.rpm$",

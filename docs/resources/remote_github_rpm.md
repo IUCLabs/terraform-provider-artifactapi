@@ -21,6 +21,7 @@ Per-type remote resources manage upstream repository proxies. Each type applies 
 | `quarantine_enabled` | No       | `false` | Enable quarantine for new artifacts                               |
 | `quarantine_days`    | No       | `3`     | Days to quarantine new artifacts                                  |
 | `stale_on_error`     | No       | `true`  | Serve stale cache when upstream is unreachable                    |
+| `serve_stale`        | No       | `false` | Let rpm/deb/alpine virtuals serve this member's last good index while it refreshes |
 | `upstream_dial_timeout` | No    | `0`     | Upstream TCP connect timeout in seconds (0 = server default)      |
 | `upstream_tls_timeout` | No     | `0`     | Upstream TLS handshake timeout in seconds (0 = server default)    |
 | `upstream_response_header_timeout` | No | `0` | Upstream response-header timeout in seconds (0 = server default) |
@@ -30,6 +31,8 @@ Per-type remote resources manage upstream repository proxies. Each type applies 
 | Attribute         | Default | Description                                              |
 |-------------------|---------|----------------------------------------------------------|
 | `releases_remote` | `""`   | Name of a backend remote that serves the download bytes. Terraform uses it for download URL rewriting; `github_rpm`/`github_deb`/`github_alpine` 302-redirect `.rpm`/`.deb`/`.apk` downloads to it. |
+| `cache_repodata`  | `false` | Cache generated repodata (`github_rpm` only). |
+| `sync_interval`   | `0`    | Release re-scan interval in seconds, `0`..`2592000` (`0` = `mutable_ttl`). `github_rpm`/`github_deb`/`github_alpine` only; rejected at plan time elsewhere. |
 
 ## Notes
 

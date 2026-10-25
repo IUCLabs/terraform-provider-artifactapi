@@ -33,6 +33,13 @@ const defaultMirrorStrategy = "round_robin"
 // validMirrorStrategies are the accepted mirror_strategy values.
 var validMirrorStrategies = map[string]bool{"round_robin": true, "least_conn": true}
 
+// syncIntervalPackageTypes are the remote types with a background release
+// syncer, the only ones accepting sync_interval.
+var syncIntervalPackageTypes = map[string]bool{"github_rpm": true, "github_deb": true, "github_alpine": true}
+
+// maxSyncInterval is the API's 30-day cap on sync_interval, in seconds.
+const maxSyncInterval = 30 * 24 * 60 * 60
+
 type remoteResource struct {
 	client      *apiClient
 	packageType string
@@ -58,6 +65,9 @@ type remoteResourceModel struct {
 	QuarantineEnabled types.Bool   `tfsdk:"quarantine_enabled"`
 	QuarantineDays    types.Int64  `tfsdk:"quarantine_days"`
 	StaleOnError      types.Bool   `tfsdk:"stale_on_error"`
+	ServeStale        types.Bool   `tfsdk:"serve_stale"`
+	CacheRepodata     types.Bool   `tfsdk:"cache_repodata"`
+	SyncInterval      types.Int64  `tfsdk:"sync_interval"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
 
 	UpstreamDialTimeout           types.Int64 `tfsdk:"upstream_dial_timeout"`
@@ -147,6 +157,18 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		"stale_on_error": schema.BoolAttribute{
 			Description: "Serve stale cached content when upstream is unreachable.",
 			Optional:    true, Computed: true, Default: booldefault.StaticBool(true),
+		},
+		"serve_stale": schema.BoolAttribute{
+			Description: "Let rpm/deb/alpine virtuals serve this member's last good index while it refreshes.",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(false),
+		},
+		"cache_repodata": schema.BoolAttribute{
+			Description: "Cache generated repodata (github_rpm only).",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(false),
+		},
+		"sync_interval": schema.Int64Attribute{
+			Description: "Release re-scan interval in seconds, 0..2592000 (0 = mutable_ttl); github_rpm/github_deb/github_alpine only.",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(0),
 		},
 		"ban_tags_enabled": schema.BoolAttribute{
 			Description: "Enable tag banning (docker only).",
@@ -304,6 +326,30 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 			)
 		}
 	}
+
+	if !config.CacheRepodata.IsNull() && !config.CacheRepodata.IsUnknown() && r.packageType != "github_rpm" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("cache_repodata"),
+			"cache_repodata not supported for this remote type",
+			fmt.Sprintf("cache_repodata is only valid on github_rpm remotes, not %q remotes.", r.packageType),
+		)
+	}
+
+	if !config.SyncInterval.IsNull() && !config.SyncInterval.IsUnknown() {
+		if !syncIntervalPackageTypes[r.packageType] {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("sync_interval"),
+				"sync_interval not supported for this remote type",
+				fmt.Sprintf("sync_interval is only valid on github_rpm/github_deb/github_alpine remotes, not %q remotes.", r.packageType),
+			)
+		} else if v := config.SyncInterval.ValueInt64(); v < 0 || v > maxSyncInterval {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("sync_interval"),
+				"invalid sync_interval",
+				fmt.Sprintf("sync_interval must be between 0 and %d seconds, got %d.", maxSyncInterval, v),
+			)
+		}
+	}
 }
 
 func reconcileOptionalLists(prior, current *remoteResourceModel) {
@@ -329,6 +375,9 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 		QuarantineEnabled: m.QuarantineEnabled.ValueBool(),
 		QuarantineDays:    m.QuarantineDays.ValueInt64(),
 		StaleOnError:      m.StaleOnError.ValueBool(),
+		ServeStale:        m.ServeStale.ValueBool(),
+		CacheRepodata:     m.CacheRepodata.ValueBool(),
+		SyncInterval:      m.SyncInterval.ValueInt64(),
 
 		UpstreamDialTimeout:           m.UpstreamDialTimeout.ValueInt64(),
 		UpstreamTLSTimeout:            m.UpstreamTLSTimeout.ValueInt64(),
@@ -375,6 +424,9 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 		QuarantineEnabled: types.BoolValue(api.QuarantineEnabled),
 		QuarantineDays:    types.Int64Value(api.QuarantineDays),
 		StaleOnError:      types.BoolValue(api.StaleOnError),
+		ServeStale:        types.BoolValue(api.ServeStale),
+		CacheRepodata:     types.BoolValue(api.CacheRepodata),
+		SyncInterval:      types.Int64Value(api.SyncInterval),
 		BanTagsEnabled:    types.BoolValue(api.BanTagsEnabled),
 		BanTags:           stringsToList(ctx, api.BanTags),
 		ReleasesRemote:    types.StringValue(api.ReleasesRemote),

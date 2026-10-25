@@ -21,3 +21,4 @@ resource "artifactapi_virtual" "helm" {
 | `package_type` | Yes      | Package type of member remotes            |
 | `description`  | No       | Human-readable description                |
 | `members`      | Yes      | List of remote names to include           |
+| `parallel_fetch` | No     | Fetch each member's index files concurrently (rpm/deb); default `false` |

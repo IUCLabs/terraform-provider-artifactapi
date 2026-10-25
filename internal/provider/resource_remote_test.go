@@ -2,9 +2,14 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -767,6 +772,139 @@ func TestValidateConfig_MirrorStrategy(t *testing.T) {
 		r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: mirrorStrategyConfig(ctx, t, r, "")}, &resp)
 		if resp.Diagnostics.HasError() {
 			t.Errorf("unexpected error for null mirror_strategy on docker: %v", resp.Diagnostics.Errors())
+		}
+	})
+}
+
+func TestRemoteResource_SchemaCacheSyncFields(t *testing.T) {
+	r := &remoteResource{packageType: "github_rpm"}
+	var resp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
+
+	for _, name := range []string{"serve_stale", "cache_repodata", "sync_interval"} {
+		attr, ok := resp.Schema.Attributes[name]
+		if !ok {
+			t.Fatalf("missing %s attribute in schema", name)
+		}
+		if !attr.IsOptional() || !attr.IsComputed() {
+			t.Errorf("%s must be Optional+Computed so the API default never churns", name)
+		}
+	}
+
+	ctx := context.Background()
+	for _, name := range []string{"serve_stale", "cache_repodata"} {
+		var d defaults.BoolResponse
+		resp.Schema.Attributes[name].(schema.BoolAttribute).Default.DefaultBool(ctx, defaults.BoolRequest{}, &d)
+		if d.PlanValue.ValueBool() {
+			t.Errorf("%s: expected default false", name)
+		}
+	}
+	var d defaults.Int64Response
+	resp.Schema.Attributes["sync_interval"].(schema.Int64Attribute).Default.DefaultInt64(ctx, defaults.Int64Request{}, &d)
+	if d.PlanValue.ValueInt64() != 0 {
+		t.Errorf("sync_interval: expected default 0, got %d", d.PlanValue.ValueInt64())
+	}
+}
+
+func TestRemoteCacheSyncFields_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "github_rpm"}
+
+	model := r.apiToModel(ctx, remoteAPI{
+		Name: "gh", PackageType: "github_rpm", BaseURL: "https://api.github.com/repos/acme/tools",
+		ServeStale: true, CacheRepodata: true, SyncInterval: 900,
+	})
+	if !model.ServeStale.ValueBool() || !model.CacheRepodata.ValueBool() || model.SyncInterval.ValueInt64() != 900 {
+		t.Errorf("apiToModel: got serve_stale=%v cache_repodata=%v sync_interval=%d",
+			model.ServeStale, model.CacheRepodata, model.SyncInterval)
+	}
+
+	api := r.modelToAPI(ctx, model)
+	if !api.ServeStale || !api.CacheRepodata || api.SyncInterval != 900 {
+		t.Errorf("modelToAPI: got serve_stale=%v cache_repodata=%v sync_interval=%d",
+			api.ServeStale, api.CacheRepodata, api.SyncInterval)
+	}
+
+	// The PUT is a full replace, so false/0 must be sent explicitly, not omitted.
+	body, err := json.Marshal(r.modelToAPI(ctx, r.apiToModel(ctx, remoteAPI{Name: "z", PackageType: "github_rpm"})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"serve_stale":false`, `"cache_repodata":false`, `"sync_interval":0`} {
+		if !strings.Contains(string(body), key) {
+			t.Errorf("request body missing %s: %s", key, body)
+		}
+	}
+}
+
+// remoteConfig builds a tfsdk.Config for the remote schema with every
+// attribute null except those in set.
+func remoteConfig(ctx context.Context, t *testing.T, r *remoteResource, set map[string]tftypes.Value) tfsdk.Config {
+	t.Helper()
+	var resp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &resp)
+	objType := resp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+
+	attrs := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, at := range objType.AttributeTypes {
+		attrs[name] = tftypes.NewValue(at, nil)
+	}
+	for name, v := range set {
+		attrs[name] = v
+	}
+	return tfsdk.Config{Schema: resp.Schema, Raw: tftypes.NewValue(objType, attrs)}
+}
+
+func TestValidateConfig_CacheRepodata(t *testing.T) {
+	ctx := context.Background()
+	set := map[string]tftypes.Value{"cache_repodata": tftypes.NewValue(tftypes.Bool, true)}
+
+	cases := map[string]bool{"github_rpm": false, "github_deb": true, "github_alpine": true, "rpm": true, "docker": true}
+	for pkgType, wantErr := range cases {
+		t.Run(pkgType, func(t *testing.T) {
+			r := &remoteResource{packageType: pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: remoteConfig(ctx, t, r, set)}, &resp)
+			if resp.Diagnostics.HasError() != wantErr {
+				t.Errorf("cache_repodata on %s: wantErr=%v, got %v", pkgType, wantErr, resp.Diagnostics.Errors())
+			}
+		})
+	}
+}
+
+func TestValidateConfig_SyncInterval(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		pkgType string
+		value   int64
+		wantErr bool
+	}{
+		{"github_rpm", 0, false},
+		{"github_deb", 3600, false},
+		{"github_alpine", maxSyncInterval, false},
+		{"github_rpm", -1, true},
+		{"github_rpm", maxSyncInterval + 1, true},
+		{"rpm", 3600, true},
+		{"docker", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s/%d", tc.pkgType, tc.value), func(t *testing.T) {
+			r := &remoteResource{packageType: tc.pkgType}
+			set := map[string]tftypes.Value{"sync_interval": tftypes.NewValue(tftypes.Number, tc.value)}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: remoteConfig(ctx, t, r, set)}, &resp)
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Errorf("wantErr=%v, got %v", tc.wantErr, resp.Diagnostics.Errors())
+			}
+		})
+	}
+
+	t.Run("null-on-docker", func(t *testing.T) {
+		r := &remoteResource{packageType: "docker"}
+		var resp resource.ValidateConfigResponse
+		r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: remoteConfig(ctx, t, r, nil)}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected error for unset cache/sync fields on docker: %v", resp.Diagnostics.Errors())
 		}
 	})
 }

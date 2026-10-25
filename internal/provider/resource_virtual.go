@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -23,10 +24,11 @@ type virtualResource struct {
 }
 
 type virtualResourceModel struct {
-	Name        types.String `tfsdk:"name"`
-	PackageType types.String `tfsdk:"package_type"`
-	Description types.String `tfsdk:"description"`
-	Members     types.List   `tfsdk:"members"`
+	Name          types.String `tfsdk:"name"`
+	PackageType   types.String `tfsdk:"package_type"`
+	Description   types.String `tfsdk:"description"`
+	Members       types.List   `tfsdk:"members"`
+	ParallelFetch types.Bool   `tfsdk:"parallel_fetch"`
 }
 
 func init() { registerResource(NewVirtualResource) }
@@ -64,6 +66,12 @@ func (r *virtualResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Ordered list of member remote names. Earlier members have higher priority for duplicate entries.",
 				Required:    true,
 				ElementType: types.StringType,
+			},
+			"parallel_fetch": schema.BoolAttribute{
+				Description: "Fetch each member's index files concurrently.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -162,18 +170,20 @@ func (r *virtualResource) ImportState(ctx context.Context, req resource.ImportSt
 
 func virtualModelToAPI(ctx context.Context, m virtualResourceModel) virtualAPI {
 	return virtualAPI{
-		Name:        m.Name.ValueString(),
-		PackageType: m.PackageType.ValueString(),
-		Description: m.Description.ValueString(),
-		Members:     listToStrings(ctx, m.Members),
+		Name:          m.Name.ValueString(),
+		PackageType:   m.PackageType.ValueString(),
+		Description:   m.Description.ValueString(),
+		Members:       listToStrings(ctx, m.Members),
+		ParallelFetch: m.ParallelFetch.ValueBool(),
 	}
 }
 
 func virtualAPIToModel(ctx context.Context, api virtualAPI) virtualResourceModel {
 	return virtualResourceModel{
-		Name:        types.StringValue(api.Name),
-		PackageType: types.StringValue(api.PackageType),
-		Description: types.StringValue(api.Description),
-		Members:     stringsToList(ctx, api.Members),
+		Name:          types.StringValue(api.Name),
+		PackageType:   types.StringValue(api.PackageType),
+		Description:   types.StringValue(api.Description),
+		Members:       stringsToList(ctx, api.Members),
+		ParallelFetch: types.BoolValue(api.ParallelFetch),
 	}
 }
