@@ -47,6 +47,9 @@ func (d *remoteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"quarantine_enabled": schema.BoolAttribute{Computed: true},
 			"quarantine_days":    schema.Int64Attribute{Computed: true},
 			"stale_on_error":     schema.BoolAttribute{Computed: true},
+			"serve_stale":        schema.BoolAttribute{Computed: true},
+			"cache_repodata":     schema.BoolAttribute{Computed: true},
+			"sync_interval":      schema.Int64Attribute{Computed: true},
 			"releases_remote":    schema.StringAttribute{Computed: true},
 			"managed_by":         schema.StringAttribute{Computed: true},
 
@@ -76,6 +79,9 @@ type remoteDataSourceModel struct {
 	QuarantineEnabled types.Bool   `tfsdk:"quarantine_enabled"`
 	QuarantineDays    types.Int64  `tfsdk:"quarantine_days"`
 	StaleOnError      types.Bool   `tfsdk:"stale_on_error"`
+	ServeStale        types.Bool   `tfsdk:"serve_stale"`
+	CacheRepodata     types.Bool   `tfsdk:"cache_repodata"`
+	SyncInterval      types.Int64  `tfsdk:"sync_interval"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
 	ManagedBy         types.String `tfsdk:"managed_by"`
 
@@ -128,6 +134,9 @@ func (d *remoteDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		QuarantineEnabled: types.BoolValue(remote.QuarantineEnabled),
 		QuarantineDays:    types.Int64Value(remote.QuarantineDays),
 		StaleOnError:      types.BoolValue(remote.StaleOnError),
+		ServeStale:        types.BoolValue(remote.ServeStale),
+		CacheRepodata:     types.BoolValue(remote.CacheRepodata),
+		SyncInterval:      types.Int64Value(remote.SyncInterval),
 		ReleasesRemote:    types.StringValue(remote.ReleasesRemote),
 		ManagedBy:         types.StringValue(remote.ManagedBy),
 

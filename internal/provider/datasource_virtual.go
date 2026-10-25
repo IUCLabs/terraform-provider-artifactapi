@@ -29,21 +29,23 @@ func (d *virtualDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 	resp.Schema = schema.Schema{
 		Description: "Read an existing ArtifactAPI virtual repository.",
 		Attributes: map[string]schema.Attribute{
-			"name":         schema.StringAttribute{Required: true, Description: "Virtual repository name."},
-			"package_type": schema.StringAttribute{Computed: true},
-			"description":  schema.StringAttribute{Computed: true},
-			"members":      schema.ListAttribute{Computed: true, ElementType: types.StringType},
-			"managed_by":   schema.StringAttribute{Computed: true},
+			"name":           schema.StringAttribute{Required: true, Description: "Virtual repository name."},
+			"package_type":   schema.StringAttribute{Computed: true},
+			"description":    schema.StringAttribute{Computed: true},
+			"members":        schema.ListAttribute{Computed: true, ElementType: types.StringType},
+			"managed_by":     schema.StringAttribute{Computed: true},
+			"parallel_fetch": schema.BoolAttribute{Computed: true},
 		},
 	}
 }
 
 type virtualDataSourceModel struct {
-	Name        types.String `tfsdk:"name"`
-	PackageType types.String `tfsdk:"package_type"`
-	Description types.String `tfsdk:"description"`
-	Members     types.List   `tfsdk:"members"`
-	ManagedBy   types.String `tfsdk:"managed_by"`
+	Name          types.String `tfsdk:"name"`
+	PackageType   types.String `tfsdk:"package_type"`
+	Description   types.String `tfsdk:"description"`
+	Members       types.List   `tfsdk:"members"`
+	ManagedBy     types.String `tfsdk:"managed_by"`
+	ParallelFetch types.Bool   `tfsdk:"parallel_fetch"`
 }
 
 func (d *virtualDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
@@ -72,11 +74,12 @@ func (d *virtualDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	}
 
 	state := virtualDataSourceModel{
-		Name:        types.StringValue(virt.Name),
-		PackageType: types.StringValue(virt.PackageType),
-		Description: types.StringValue(virt.Description),
-		Members:     stringsToList(ctx, virt.Members),
-		ManagedBy:   types.StringValue(virt.ManagedBy),
+		Name:          types.StringValue(virt.Name),
+		PackageType:   types.StringValue(virt.PackageType),
+		Description:   types.StringValue(virt.Description),
+		Members:       stringsToList(ctx, virt.Members),
+		ManagedBy:     types.StringValue(virt.ManagedBy),
+		ParallelFetch: types.BoolValue(virt.ParallelFetch),
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
