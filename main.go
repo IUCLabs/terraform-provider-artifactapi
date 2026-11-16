@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.24.0 generate --provider-name artifactapi
+
 import (
 	"context"
 	"flag"
@@ -7,7 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"git.unkin.net/unkin/terraform-provider-artifactapi/internal/provider"
+	"github.com/IUCLabs/terraform-provider-artifactapi/internal/provider"
 )
 
 var version = "0.0.1"
@@ -18,7 +20,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "git.unkin.net/unkin/artifactapi",
+		Address: "registry.terraform.io/iuclabs/artifactapi",
 		Debug:   debug,
 	}
 

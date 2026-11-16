@@ -1,4 +1,4 @@
-module git.unkin.net/unkin/terraform-provider-artifactapi
+module github.com/IUCLabs/terraform-provider-artifactapi
 
 go 1.25.9
 
