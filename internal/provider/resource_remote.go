@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -25,6 +26,21 @@ var (
 // and mirror_strategy attributes are valid; the API load-balances
 // base_url + mirrorlist for these.
 var mirrorlistPackageTypes = map[string]bool{"rpm": true, "deb": true, "alpine": true}
+
+const githubReleasesNote = "Set `base_url` to the releases API root (`https://api.github.com/repos/{owner}/{repo}`) and `releases_remote` to a generic `github.com` remote that streams the package bytes; package downloads 302-redirect there. `patterns` filters which release assets become packages (regex on asset filename). `password` may hold a token for private repos or higher API rate limits."
+
+var remoteTypeNotes = map[string]string{
+	"docker":        "Tag manifests are mutable and blobs are immutable; `ban_tags` blocks specific tags.",
+	"helm":          "`index.yaml` is mutable; chart archives are immutable.",
+	"rpm":           "`repodata/*` is mutable and packages are immutable. Supports `mirrorlist` and `mirror_strategy`.",
+	"deb":           "Supports `mirrorlist` and `mirror_strategy`.",
+	"alpine":        "Supports `mirrorlist` and `mirror_strategy`.",
+	"terraform":     "Provider download URLs are rewritten to the generic remote named in `releases_remote`.",
+	"github_rpm":    "Exposes a GitHub repository's release `.rpm` assets as a dnf/yum repository without precaching packages. " + githubReleasesNote,
+	"github_deb":    "Exposes a GitHub repository's release `.deb` assets as an apt repository, synthesising `Packages`/`Release` from release metadata. " + githubReleasesNote,
+	"github_alpine": "Exposes a GitHub repository's release `.apk` assets as an apk repository, synthesising `APKINDEX.tar.gz` from release metadata. " + githubReleasesNote,
+	"vcs":           "Caches GitHub (`base_url = \"https://github.com\"`) or Gitea source archives and release assets. Tag, commit and release-download paths are immutable; branch archives redirect to the archive of the branch's current commit, re-resolved after `mutable_ttl`.",
+}
 
 // defaultMirrorStrategy is the API's server-side default for mirror_strategy
 // (stored NOT NULL DEFAULT 'round_robin' and always echoed back on read).
@@ -108,13 +124,16 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(defaultMirrorStrategy),
 		},
 		"description": schema.StringAttribute{
-			Optional: true, Computed: true, Default: stringdefault.StaticString(""),
+			Description: "Human-readable description.",
+			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"username": schema.StringAttribute{
-			Optional: true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
+			Description: "Username for upstream authentication.",
+			Optional:    true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
 		},
 		"password": schema.StringAttribute{
-			Optional: true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
+			Description: "Password or token for upstream authentication.",
+			Optional:    true, Computed: true, Sensitive: true, Default: stringdefault.StaticString(""),
 		},
 		"immutable_ttl": schema.Int64Attribute{
 			Description: "TTL in seconds for immutable artifacts (0 = forever).",
@@ -149,10 +168,12 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			ElementType: types.StringType,
 		},
 		"quarantine_enabled": schema.BoolAttribute{
-			Optional: true, Computed: true, Default: booldefault.StaticBool(false),
+			Description: "Hold newly published upstream artifacts back until they are `quarantine_days` old.",
+			Optional:    true, Computed: true, Default: booldefault.StaticBool(false),
 		},
 		"quarantine_days": schema.Int64Attribute{
-			Optional: true, Computed: true, Default: int64default.StaticInt64(3),
+			Description: "Days to quarantine new artifacts when `quarantine_enabled` is set.",
+			Optional:    true, Computed: true, Default: int64default.StaticInt64(3),
 		},
 		"stale_on_error": schema.BoolAttribute{
 			Description: "Serve stale cached content when upstream is unreachable.",
@@ -198,7 +219,7 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 	}
 
 	resp.Schema = schema.Schema{
-		Description: fmt.Sprintf("Manages an ArtifactAPI %s remote.", r.packageType),
+		Description: strings.TrimSpace(fmt.Sprintf("Manages an ArtifactAPI %s remote, a caching proxy for an upstream repository. %s", r.packageType, remoteTypeNotes[r.packageType])),
 		Attributes:  attrs,
 	}
 }
