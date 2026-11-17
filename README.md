@@ -1,75 +1,59 @@
-# terraform-provider-artifactapi
+# Terraform Provider ArtifactAPI
 
-Terraform provider for managing [ArtifactAPI](https://git.unkin.net/unkin/artifactapi) remotes and virtual repositories.
+The ArtifactAPI provider manages repositories on an ArtifactAPI server: local
+repositories that host packages directly, remotes that cache an upstream
+(Docker, Helm, PyPI, npm, RPM, Deb, Alpine, Go, Terraform, GitHub releases and
+more), and virtual repositories that merge several remotes behind one endpoint.
+It works with Terraform and OpenTofu.
 
-## Requirements
-
-- Go >= 1.23
-- Terraform >= 1.0
-
-## Building
-
-```sh
-make build
-```
-
-## Installation
-
-Install the provider to your local Terraform plugin directory:
-
-```sh
-make install
-```
-
-This places the binary at `~/.terraform.d/plugins/git.unkin.net/unkin/artifactapi/<version>/<os_arch>/`.
-
-A `make install` build is referenced with `source = "git.unkin.net/unkin/artifactapi"` (the provider address, matching that path); the `artifactapi.example.com/terraform-unkin/artifactapi` source below is for installing from an artifactapi registry.
-
-## Provider Configuration
+## Quick start
 
 ```hcl
 terraform {
   required_providers {
     artifactapi = {
-      source  = "artifactapi.example.com/terraform-unkin/artifactapi"
-      version = "0.0.1"
+      source = "IUCLabs/artifactapi"
     }
   }
 }
 
 provider "artifactapi" {
   endpoint = "https://artifactapi.example.com"
-  token    = var.artifactapi_token # optional
+  # token defaults to the ARTIFACTAPI_TOKEN environment variable
+}
+
+resource "artifactapi_remote_docker" "dockerhub" {
+  name        = "dockerhub"
+  base_url    = "https://registry-1.docker.io"
+  mutable_ttl = 300
+}
+
+resource "artifactapi_local_rpm" "internal" {
+  name = "rpm-internal"
 }
 ```
 
-| Attribute  | Required | Description                                                                  |
-|------------|----------|------------------------------------------------------------------------------|
-| `endpoint` | Yes      | ArtifactAPI server endpoint URL                                              |
-| `token`    | No       | Bearer token sent as `Authorization` header; falls back to `ARTIFACTAPI_TOKEN` |
+All resources can be imported by name, e.g.
+`terraform import artifactapi_remote_docker.dockerhub dockerhub`.
 
-## Resources and Data Sources
+## Requirements
 
-Each resource is documented in [`docs/resources/`](docs/resources/) and each data
-source in [`docs/data-sources/`](docs/data-sources/), with a matching example under
-[`examples/`](examples/).
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0 or [OpenTofu](https://opentofu.org) >= 1.6
+- [Go](https://go.dev/doc/install) >= 1.25 (to build the provider)
 
-## Import
-
-Resources can be imported by name:
+## Building
 
 ```sh
-terraform import artifactapi_remote_docker.dockerhub dockerhub
-terraform import artifactapi_virtual.helm helm
+make build
+make test
+make docs    # regenerate docs/ from the schema and examples/
 ```
 
-## Development
+## Documentation
 
-```sh
-make build    # Build the provider binary
-make install  # Install to local plugin directory
-make test     # Run tests
-make lint     # Run go vet
-make fmt      # Format code
-make clean    # Remove binary
-```
+See [`docs/`](docs/index.md) for the provider, resource and data source
+reference, and [`examples/`](examples/) for usage.
+
+## License
+
+[MIT](LICENSE)

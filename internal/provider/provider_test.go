@@ -82,6 +82,8 @@ func TestProvider_DataSources_Invariants(t *testing.T) {
 	checkRegistered(t, names, "data-sources")
 }
 
+var exampleFile = map[string]string{"resources": "resource.tf", "data-sources": "data-source.tf"}
+
 func checkRegistered(t *testing.T, names []string, kind string) {
 	t.Helper()
 	if len(names) == 0 {
@@ -99,7 +101,7 @@ func checkRegistered(t *testing.T, names []string, kind string) {
 			t.Errorf("%s: duplicate type name %q", kind, n)
 		}
 		seen[n] = true
-		if _, err := os.Stat(filepath.Join("../../examples", kind, n, "main.tf")); err != nil {
+		if _, err := os.Stat(filepath.Join("../../examples", kind, n, exampleFile[kind])); err != nil {
 			t.Errorf("%s: %s has no example: %v", kind, n, err)
 		}
 		if _, err := os.Stat(filepath.Join("../../docs", kind, strings.TrimPrefix(n, "artifactapi_")+".md")); err != nil {

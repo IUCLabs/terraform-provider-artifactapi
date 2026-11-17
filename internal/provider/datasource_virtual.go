@@ -30,11 +30,11 @@ func (d *virtualDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 		Description: "Read an existing ArtifactAPI virtual repository.",
 		Attributes: map[string]schema.Attribute{
 			"name":           schema.StringAttribute{Required: true, Description: "Virtual repository name."},
-			"package_type":   schema.StringAttribute{Computed: true},
-			"description":    schema.StringAttribute{Computed: true},
-			"members":        schema.ListAttribute{Computed: true, ElementType: types.StringType},
-			"managed_by":     schema.StringAttribute{Computed: true},
-			"parallel_fetch": schema.BoolAttribute{Computed: true},
+			"package_type":   schema.StringAttribute{Computed: true, Description: "Package type of the virtual repository."},
+			"description":    schema.StringAttribute{Computed: true, Description: "Human-readable description."},
+			"members":        schema.ListAttribute{Computed: true, ElementType: types.StringType, Description: "Ordered list of member remote names."},
+			"managed_by":     schema.StringAttribute{Computed: true, Description: "What manages the repository (e.g. terraform)."},
+			"parallel_fetch": schema.BoolAttribute{Computed: true, Description: "Whether member index files are fetched concurrently."},
 		},
 	}
 }

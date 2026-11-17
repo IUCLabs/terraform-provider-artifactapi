@@ -35,7 +35,7 @@ func (p *ArtifactAPIProvider) Metadata(_ context.Context, _ provider.MetadataReq
 
 func (p *ArtifactAPIProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage ArtifactAPI remotes and virtual repositories.",
+		Description: "Manage ArtifactAPI local, remote and virtual repositories.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Description: "The ArtifactAPI server endpoint URL (e.g. https://artifactapi.example.com).",
