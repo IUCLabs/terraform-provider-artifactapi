@@ -8,6 +8,8 @@ It works with Terraform and OpenTofu.
 
 ## Quick start
 
+Prebuilt provider archives are on the [releases page](https://github.com/IUCLabs/terraform-provider-artifactapi/releases).
+
 ```hcl
 terraform {
   required_providers {
