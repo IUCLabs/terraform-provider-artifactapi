@@ -32,7 +32,7 @@ resource "artifactapi_settings" "this" {
 
 - `s3_health_down_threshold` (Number) Consecutive failed S3 health probes before the backend is marked down. Must be between 1 and 100. Unset clears the override, reverting to the server's environment default.
 - `s3_health_interval_ms` (Number) Interval between S3 health probes, in milliseconds. Must be between 500 and 3600000. Unset clears the override, reverting to the server's environment default.
-- `s3_health_timeout_ms` (Number) Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. When s3_health_interval_ms is unset, this is checked against the server's default interval only at apply. Must be at least 100. Unset clears the override, reverting to the server's environment default.
+- `s3_health_timeout_ms` (Number) Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. Must be between 100 and 3599999. When s3_health_interval_ms is unset, the shorter-than-interval rule is checked against the server's default interval only at apply. Unset clears the override, reverting to the server's environment default.
 - `s3_health_up_threshold` (Number) Consecutive successful S3 health probes before the backend is marked up. Must be between 1 and 100. Unset clears the override, reverting to the server's environment default.
 
 ### Read-Only

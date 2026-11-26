@@ -62,17 +62,17 @@ var settingsAttrBounds = map[string]settingsBounds{
 	"s3_health_up_threshold":   {1, 100},
 	"s3_health_down_threshold": {1, 100},
 	"s3_health_interval_ms":    {500, 3600000},
-	"s3_health_timeout_ms":     {100, 3600000},
+	"s3_health_timeout_ms":     {100, 3599999},
 }
 
 func settingsIntAttribute(name, description string) schema.Int64Attribute {
 	b := settingsAttrBounds[name]
-	bounds := fmt.Sprintf(" Must be between %d and %d.", b.min, b.max)
+	desc := fmt.Sprintf("%s Must be between %d and %d.", description, b.min, b.max)
 	if name == "s3_health_timeout_ms" {
-		bounds = fmt.Sprintf(" Must be at least %d.", b.min)
+		desc += " When s3_health_interval_ms is unset, the shorter-than-interval rule is checked against the server's default interval only at apply."
 	}
 	return schema.Int64Attribute{
-		Description: description + bounds + " Unset clears the override, reverting to the server's environment default.",
+		Description: desc + " Unset clears the override, reverting to the server's environment default.",
 		Optional:    true,
 	}
 }
@@ -95,8 +95,7 @@ func (r *settingsResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"s3_health_up_threshold":   settingsIntAttribute("s3_health_up_threshold", "Consecutive successful S3 health probes before the backend is marked up."),
 			"s3_health_down_threshold": settingsIntAttribute("s3_health_down_threshold", "Consecutive failed S3 health probes before the backend is marked down."),
 			"s3_health_interval_ms":    settingsIntAttribute("s3_health_interval_ms", "Interval between S3 health probes, in milliseconds."),
-			"s3_health_timeout_ms": settingsIntAttribute("s3_health_timeout_ms", "Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. "+
-				"When s3_health_interval_ms is unset, this is checked against the server's default interval only at apply."),
+			"s3_health_timeout_ms":     settingsIntAttribute("s3_health_timeout_ms", "Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms."),
 			"effective": schema.SingleNestedAttribute{
 				Description: "Settings the server is running with: each override, or the environment default where unset.",
 				Computed:    true,
@@ -138,6 +137,7 @@ func (r *settingsResource) Read(ctx context.Context, _ resource.ReadRequest, res
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	warnInvalidSettings(got, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, m)...)
 }
 
@@ -207,7 +207,16 @@ func (r *settingsResource) write(ctx context.Context, cfg tfsdk.Config, state *t
 	if diags.HasError() {
 		return
 	}
+	warnInvalidSettings(got, diags)
 	diags.Append(state.Set(ctx, m)...)
+}
+
+func warnInvalidSettings(resp settingsResponseAPI, diags *diag.Diagnostics) {
+	if resp.Valid {
+		return
+	}
+	diags.AddWarning("effective settings are invalid",
+		"The server reports its effective settings as invalid and keeps running with its previous S3 health configuration: "+resp.Error)
 }
 
 func knownInt64(v types.Int64) bool {

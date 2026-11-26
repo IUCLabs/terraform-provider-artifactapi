@@ -52,4 +52,6 @@ type settingsAPI struct {
 type settingsResponseAPI struct {
 	settingsAPI
 	Overrides settingsAPI `json:"overrides"`
+	Valid     bool        `json:"valid"`
+	Error     string      `json:"error"`
 }

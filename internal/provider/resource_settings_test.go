@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -159,6 +160,8 @@ func TestSettingsResource_ValidateConfig(t *testing.T) {
 		{"interval below 500", map[string]any{"s3_health_interval_ms": 499}, true},
 		{"interval above max", map[string]any{"s3_health_interval_ms": 3600001}, true},
 		{"timeout below 100", map[string]any{"s3_health_timeout_ms": 99}, true},
+		{"timeout at max", map[string]any{"s3_health_timeout_ms": 3599999}, false},
+		{"timeout above max", map[string]any{"s3_health_timeout_ms": 3600000}, true},
 		{"timeout equals interval", map[string]any{"s3_health_interval_ms": 1000, "s3_health_timeout_ms": 1000}, true},
 		{"timeout above interval", map[string]any{"s3_health_interval_ms": 1000, "s3_health_timeout_ms": 2000}, true},
 		{"timeout alone is left to the server", map[string]any{"s3_health_timeout_ms": 5000}, false},
@@ -342,7 +345,7 @@ func TestSettingsResource_PutBodyHasOnlyKnownKeys(t *testing.T) {
 
 func TestSettingsResource_Read_ToleratesExtraFields(t *testing.T) {
 	ctx := context.Background()
-	body := strings.Replace(settingsResponseJSON, `"valid":true`, `"valid":false,"error":"stale","extra":1`, 1)
+	body := strings.Replace(settingsResponseJSON, `"valid":true`, `"valid":true,"extra":1`, 1)
 	client, _ := settingsServer(t, http.StatusOK, body)
 	resp := resource.ReadResponse{State: emptySettingsState(ctx)}
 	(&settingsResource{client: client}).Read(ctx, resource.ReadRequest{State: emptySettingsState(ctx)}, &resp)
@@ -350,4 +353,63 @@ func TestSettingsResource_Read_ToleratesExtraFields(t *testing.T) {
 		t.Fatalf("read must ignore unknown response fields: %v", resp.Diagnostics)
 	}
 	assertSettingsState(t, ctx, resp.State)
+}
+
+const invalidSettingsResponseJSON = `{"s3_health_up_threshold":5,"s3_health_down_threshold":6,"s3_health_interval_ms":3000,"s3_health_timeout_ms":1500,` +
+	`"overrides":{"s3_health_up_threshold":5,"s3_health_down_threshold":null,"s3_health_interval_ms":null,"s3_health_timeout_ms":null},` +
+	`"valid":false,"error":"s3_health_timeout_ms (5000) must be shorter than s3_health_interval_ms (3000)"}`
+
+func assertInvalidSettingsWarning(t *testing.T, diags diag.Diagnostics) {
+	t.Helper()
+	if diags.HasError() {
+		t.Fatalf("invalid effective settings must warn, not fail: %v", diags.Errors())
+	}
+	w := diags.Warnings()
+	if len(w) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(w), w)
+	}
+	if !strings.Contains(w[0].Detail(), "s3_health_timeout_ms (5000) must be shorter than s3_health_interval_ms (3000)") {
+		t.Errorf("warning must carry the server error, got %q", w[0].Detail())
+	}
+}
+
+func TestSettingsResource_Read_WarnsOnInvalidEffective(t *testing.T) {
+	ctx := context.Background()
+	client, _ := settingsServer(t, http.StatusOK, invalidSettingsResponseJSON)
+	resp := resource.ReadResponse{State: emptySettingsState(ctx)}
+	(&settingsResource{client: client}).Read(ctx, resource.ReadRequest{State: emptySettingsState(ctx)}, &resp)
+	assertInvalidSettingsWarning(t, resp.Diagnostics)
+	assertSettingsState(t, ctx, resp.State)
+}
+
+func TestSettingsResource_Create_WarnsOnInvalidEffective(t *testing.T) {
+	ctx := context.Background()
+	client, _ := settingsServer(t, http.StatusOK, invalidSettingsResponseJSON)
+	resp := resource.CreateResponse{State: emptySettingsState(ctx)}
+	(&settingsResource{client: client}).Create(ctx, resource.CreateRequest{Config: settingsConfig(ctx, map[string]any{"s3_health_up_threshold": 5})}, &resp)
+	assertInvalidSettingsWarning(t, resp.Diagnostics)
+	assertSettingsState(t, ctx, resp.State)
+}
+
+func TestSettingsResource_Update_WarnsOnInvalidEffective(t *testing.T) {
+	ctx := context.Background()
+	client, _ := settingsServer(t, http.StatusOK, invalidSettingsResponseJSON)
+	resp := resource.UpdateResponse{State: emptySettingsState(ctx)}
+	(&settingsResource{client: client}).Update(ctx, resource.UpdateRequest{Config: settingsConfig(ctx, map[string]any{"s3_health_up_threshold": 5})}, &resp)
+	assertInvalidSettingsWarning(t, resp.Diagnostics)
+}
+
+func TestSettingsResource_ValidEffectiveHasNoWarning(t *testing.T) {
+	ctx := context.Background()
+	client, _ := settingsServer(t, http.StatusOK, settingsResponseJSON)
+	r := &settingsResource{client: client}
+	read := resource.ReadResponse{State: emptySettingsState(ctx)}
+	r.Read(ctx, resource.ReadRequest{State: emptySettingsState(ctx)}, &read)
+	create := resource.CreateResponse{State: emptySettingsState(ctx)}
+	r.Create(ctx, resource.CreateRequest{Config: settingsConfig(ctx, nil)}, &create)
+	for name, d := range map[string]diag.Diagnostics{"read": read.Diagnostics, "create": create.Diagnostics} {
+		if n := d.WarningsCount(); n != 0 {
+			t.Errorf("%s: valid settings must not warn, got %v", name, d.Warnings())
+		}
+	}
 }
