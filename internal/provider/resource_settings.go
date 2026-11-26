@@ -56,9 +56,23 @@ func (r *settingsResource) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_settings"
 }
 
-func settingsIntAttribute(description string) schema.Int64Attribute {
+type settingsBounds struct{ min, max int64 }
+
+var settingsAttrBounds = map[string]settingsBounds{
+	"s3_health_up_threshold":   {1, 100},
+	"s3_health_down_threshold": {1, 100},
+	"s3_health_interval_ms":    {500, 3600000},
+	"s3_health_timeout_ms":     {100, 3600000},
+}
+
+func settingsIntAttribute(name, description string) schema.Int64Attribute {
+	b := settingsAttrBounds[name]
+	bounds := fmt.Sprintf(" Must be between %d and %d.", b.min, b.max)
+	if name == "s3_health_timeout_ms" {
+		bounds = fmt.Sprintf(" Must be at least %d.", b.min)
+	}
 	return schema.Int64Attribute{
-		Description: description + " Must be at least 1. Unset clears the override, reverting to the server's environment default.",
+		Description: description + bounds + " Unset clears the override, reverting to the server's environment default.",
 		Optional:    true,
 	}
 }
@@ -78,10 +92,10 @@ func (r *settingsResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"s3_health_up_threshold":   settingsIntAttribute("Consecutive successful S3 health probes before the backend is marked up."),
-			"s3_health_down_threshold": settingsIntAttribute("Consecutive failed S3 health probes before the backend is marked down."),
-			"s3_health_interval_ms":    settingsIntAttribute("Interval between S3 health probes, in milliseconds."),
-			"s3_health_timeout_ms": settingsIntAttribute("Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. " +
+			"s3_health_up_threshold":   settingsIntAttribute("s3_health_up_threshold", "Consecutive successful S3 health probes before the backend is marked up."),
+			"s3_health_down_threshold": settingsIntAttribute("s3_health_down_threshold", "Consecutive failed S3 health probes before the backend is marked down."),
+			"s3_health_interval_ms":    settingsIntAttribute("s3_health_interval_ms", "Interval between S3 health probes, in milliseconds."),
+			"s3_health_timeout_ms": settingsIntAttribute("s3_health_timeout_ms", "Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. "+
 				"When s3_health_interval_ms is unset, this is checked against the server's default interval only at apply."),
 			"effective": schema.SingleNestedAttribute{
 				Description: "Settings the server is running with: each override, or the environment default where unset.",
@@ -154,11 +168,12 @@ func (r *settingsResource) ValidateConfig(ctx context.Context, req resource.Vali
 		"s3_health_interval_ms":    config.S3HealthIntervalMs,
 		"s3_health_timeout_ms":     config.S3HealthTimeoutMs,
 	} {
-		if knownInt64(v) && v.ValueInt64() < 1 {
+		b := settingsAttrBounds[name]
+		if knownInt64(v) && (v.ValueInt64() < b.min || v.ValueInt64() > b.max) {
 			resp.Diagnostics.AddAttributeError(
 				path.Root(name),
 				"invalid "+name,
-				fmt.Sprintf("%s must be at least 1, got %d.", name, v.ValueInt64()),
+				fmt.Sprintf("%s must be between %d and %d, got %d.", name, b.min, b.max, v.ValueInt64()),
 			)
 		}
 	}
