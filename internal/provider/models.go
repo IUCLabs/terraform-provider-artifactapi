@@ -41,3 +41,10 @@ type virtualAPI struct {
 	ManagedBy     string   `json:"managed_by,omitempty"`
 	ParallelFetch bool     `json:"parallel_fetch"`
 }
+
+type settingsAPI struct {
+	S3HealthUpThreshold   *int64 `json:"s3_health_up_threshold"`
+	S3HealthDownThreshold *int64 `json:"s3_health_down_threshold"`
+	S3HealthIntervalMs    *int64 `json:"s3_health_interval_ms"`
+	S3HealthTimeoutMs     *int64 `json:"s3_health_timeout_ms"`
+}
