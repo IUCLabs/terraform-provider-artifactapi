@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -25,6 +26,13 @@ var (
 	_ resource.ResourceWithValidateConfig = &settingsResource{}
 )
 
+var settingsEffectiveAttrTypes = map[string]attr.Type{
+	"s3_health_up_threshold":   types.Int64Type,
+	"s3_health_down_threshold": types.Int64Type,
+	"s3_health_interval_ms":    types.Int64Type,
+	"s3_health_timeout_ms":     types.Int64Type,
+}
+
 type settingsResource struct {
 	client *apiClient
 }
@@ -35,6 +43,7 @@ type settingsResourceModel struct {
 	S3HealthDownThreshold types.Int64  `tfsdk:"s3_health_down_threshold"`
 	S3HealthIntervalMs    types.Int64  `tfsdk:"s3_health_interval_ms"`
 	S3HealthTimeoutMs     types.Int64  `tfsdk:"s3_health_timeout_ms"`
+	Effective             types.Object `tfsdk:"effective"`
 }
 
 func init() { registerResource(NewSettingsResource) }
@@ -49,15 +58,18 @@ func (r *settingsResource) Metadata(_ context.Context, req resource.MetadataRequ
 
 func settingsIntAttribute(description string) schema.Int64Attribute {
 	return schema.Int64Attribute{
-		Description: description + " Must be at least 1. Unset reverts to the server's environment default.",
+		Description: description + " Must be at least 1. Unset clears the override, reverting to the server's environment default.",
 		Optional:    true,
-		Computed:    true,
 	}
+}
+
+func settingsEffectiveAttribute(description string) schema.Int64Attribute {
+	return schema.Int64Attribute{Description: description, Computed: true}
 }
 
 func (r *settingsResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages the singleton ArtifactAPI global settings. Only one instance should exist per server; destroying it reverts every setting to the server's environment defaults.",
+		Description: "Manages the singleton ArtifactAPI global settings overrides. Only one instance should exist per server; overrides set outside Terraform on unset attributes are cleared on apply, and destroying it reverts every setting to the server's environment defaults.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Fixed identifier of the singleton, always \"settings\".",
@@ -69,7 +81,18 @@ func (r *settingsResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"s3_health_up_threshold":   settingsIntAttribute("Consecutive successful S3 health probes before the backend is marked up."),
 			"s3_health_down_threshold": settingsIntAttribute("Consecutive failed S3 health probes before the backend is marked down."),
 			"s3_health_interval_ms":    settingsIntAttribute("Interval between S3 health probes, in milliseconds."),
-			"s3_health_timeout_ms":     settingsIntAttribute("Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms."),
+			"s3_health_timeout_ms": settingsIntAttribute("Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. " +
+				"When s3_health_interval_ms is unset, this is checked against the server's default interval only at apply."),
+			"effective": schema.SingleNestedAttribute{
+				Description: "Settings the server is running with: each override, or the environment default where unset.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"s3_health_up_threshold":   settingsEffectiveAttribute("Effective S3 health up threshold."),
+					"s3_health_down_threshold": settingsEffectiveAttribute("Effective S3 health down threshold."),
+					"s3_health_interval_ms":    settingsEffectiveAttribute("Effective S3 health probe interval, in milliseconds."),
+					"s3_health_timeout_ms":     settingsEffectiveAttribute("Effective S3 health probe timeout, in milliseconds."),
+				},
+			},
 		},
 	}
 }
@@ -90,13 +113,18 @@ func (r *settingsResource) Create(ctx context.Context, req resource.CreateReques
 	r.write(ctx, req.Config, &resp.State, &resp.Diagnostics, "create settings failed")
 }
 
-func (r *settingsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var got settingsAPI
+func (r *settingsResource) Read(ctx context.Context, _ resource.ReadRequest, resp *resource.ReadResponse) {
+	var got settingsResponseAPI
 	if err := r.client.get(ctx, settingsPath, &got); err != nil {
 		resp.Diagnostics.AddError("read settings failed", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, settingsAPIToModel(got))...)
+	m, diags := settingsResponseToModel(got)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, m)...)
 }
 
 func (r *settingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -146,7 +174,7 @@ func (r *settingsResource) ValidateConfig(ctx context.Context, req resource.Vali
 	}
 }
 
-// write PUTs the configured values, not the plan, so unset fields are sent null and revert to the env default.
+// write PUTs the configured values; the PUT replaces every override, so unset fields are cleared.
 func (r *settingsResource) write(ctx context.Context, cfg tfsdk.Config, state *tfsdk.State, diags *diag.Diagnostics, summary string) {
 	var config settingsResourceModel
 	diags.Append(cfg.Get(ctx, &config)...)
@@ -154,12 +182,17 @@ func (r *settingsResource) write(ctx context.Context, cfg tfsdk.Config, state *t
 		return
 	}
 
-	var effective settingsAPI
-	if err := r.client.put(ctx, settingsPath, settingsModelToAPI(config), &effective); err != nil {
+	var got settingsResponseAPI
+	if err := r.client.put(ctx, settingsPath, settingsModelToAPI(config), &got); err != nil {
 		diags.AddError(summary, err.Error())
 		return
 	}
-	diags.Append(state.Set(ctx, settingsAPIToModel(effective))...)
+	m, d := settingsResponseToModel(got)
+	diags.Append(d...)
+	if diags.HasError() {
+		return
+	}
+	diags.Append(state.Set(ctx, m)...)
 }
 
 func knownInt64(v types.Int64) bool {
@@ -182,12 +215,20 @@ func settingsModelToAPI(m settingsResourceModel) settingsAPI {
 	}
 }
 
-func settingsAPIToModel(api settingsAPI) settingsResourceModel {
+func settingsResponseToModel(resp settingsResponseAPI) (settingsResourceModel, diag.Diagnostics) {
+	effective, diags := types.ObjectValue(settingsEffectiveAttrTypes, map[string]attr.Value{
+		"s3_health_up_threshold":   types.Int64PointerValue(resp.S3HealthUpThreshold),
+		"s3_health_down_threshold": types.Int64PointerValue(resp.S3HealthDownThreshold),
+		"s3_health_interval_ms":    types.Int64PointerValue(resp.S3HealthIntervalMs),
+		"s3_health_timeout_ms":     types.Int64PointerValue(resp.S3HealthTimeoutMs),
+	})
+	o := resp.Overrides
 	return settingsResourceModel{
 		ID:                    types.StringValue(settingsID),
-		S3HealthUpThreshold:   types.Int64PointerValue(api.S3HealthUpThreshold),
-		S3HealthDownThreshold: types.Int64PointerValue(api.S3HealthDownThreshold),
-		S3HealthIntervalMs:    types.Int64PointerValue(api.S3HealthIntervalMs),
-		S3HealthTimeoutMs:     types.Int64PointerValue(api.S3HealthTimeoutMs),
-	}
+		S3HealthUpThreshold:   types.Int64PointerValue(o.S3HealthUpThreshold),
+		S3HealthDownThreshold: types.Int64PointerValue(o.S3HealthDownThreshold),
+		S3HealthIntervalMs:    types.Int64PointerValue(o.S3HealthIntervalMs),
+		S3HealthTimeoutMs:     types.Int64PointerValue(o.S3HealthTimeoutMs),
+		Effective:             effective,
+	}, diags
 }

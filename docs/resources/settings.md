@@ -3,18 +3,19 @@
 page_title: "artifactapi_settings Resource - artifactapi"
 subcategory: ""
 description: |-
-  Manages the singleton ArtifactAPI global settings. Only one instance should exist per server; destroying it reverts every setting to the server's environment defaults.
+  Manages the singleton ArtifactAPI global settings overrides. Only one instance should exist per server; overrides set outside Terraform on unset attributes are cleared on apply, and destroying it reverts every setting to the server's environment defaults.
 ---
 
 # artifactapi_settings (Resource)
 
-Manages the singleton ArtifactAPI global settings. Only one instance should exist per server; destroying it reverts every setting to the server's environment defaults.
+Manages the singleton ArtifactAPI global settings overrides. Only one instance should exist per server; overrides set outside Terraform on unset attributes are cleared on apply, and destroying it reverts every setting to the server's environment defaults.
 
 ## Example Usage
 
 ```terraform
-# Global server settings; there is one per server. Unset attributes
-# use the server's environment defaults, and destroying the resource
+# Global server settings overrides; there is one per server. Unset
+# attributes clear their override (including ones set outside Terraform)
+# and use the server's environment defaults; destroying the resource
 # reverts every setting to them.
 resource "artifactapi_settings" "this" {
   s3_health_up_threshold   = 2
@@ -29,14 +30,25 @@ resource "artifactapi_settings" "this" {
 
 ### Optional
 
-- `s3_health_down_threshold` (Number) Consecutive failed S3 health probes before the backend is marked down. Must be at least 1. Unset reverts to the server's environment default.
-- `s3_health_interval_ms` (Number) Interval between S3 health probes, in milliseconds. Must be at least 1. Unset reverts to the server's environment default.
-- `s3_health_timeout_ms` (Number) Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. Must be at least 1. Unset reverts to the server's environment default.
-- `s3_health_up_threshold` (Number) Consecutive successful S3 health probes before the backend is marked up. Must be at least 1. Unset reverts to the server's environment default.
+- `s3_health_down_threshold` (Number) Consecutive failed S3 health probes before the backend is marked down. Must be at least 1. Unset clears the override, reverting to the server's environment default.
+- `s3_health_interval_ms` (Number) Interval between S3 health probes, in milliseconds. Must be at least 1. Unset clears the override, reverting to the server's environment default.
+- `s3_health_timeout_ms` (Number) Timeout of each S3 health probe, in milliseconds; must be shorter than s3_health_interval_ms. When s3_health_interval_ms is unset, this is checked against the server's default interval only at apply. Must be at least 1. Unset clears the override, reverting to the server's environment default.
+- `s3_health_up_threshold` (Number) Consecutive successful S3 health probes before the backend is marked up. Must be at least 1. Unset clears the override, reverting to the server's environment default.
 
 ### Read-Only
 
+- `effective` (Attributes) Settings the server is running with: each override, or the environment default where unset. (see [below for nested schema](#nestedatt--effective))
 - `id` (String) Fixed identifier of the singleton, always "settings".
+
+<a id="nestedatt--effective"></a>
+### Nested Schema for `effective`
+
+Read-Only:
+
+- `s3_health_down_threshold` (Number) Effective S3 health down threshold.
+- `s3_health_interval_ms` (Number) Effective S3 health probe interval, in milliseconds.
+- `s3_health_timeout_ms` (Number) Effective S3 health probe timeout, in milliseconds.
+- `s3_health_up_threshold` (Number) Effective S3 health up threshold.
 
 ## Import
 

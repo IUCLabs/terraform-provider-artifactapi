@@ -48,3 +48,8 @@ type settingsAPI struct {
 	S3HealthIntervalMs    *int64 `json:"s3_health_interval_ms"`
 	S3HealthTimeoutMs     *int64 `json:"s3_health_timeout_ms"`
 }
+
+type settingsResponseAPI struct {
+	settingsAPI
+	Overrides settingsAPI `json:"overrides"`
+}

@@ -1,5 +1,6 @@
-# Global server settings; there is one per server. Unset attributes
-# use the server's environment defaults, and destroying the resource
+# Global server settings overrides; there is one per server. Unset
+# attributes clear their override (including ones set outside Terraform)
+# and use the server's environment defaults; destroying the resource
 # reverts every setting to them.
 resource "artifactapi_settings" "this" {
   s3_health_up_threshold   = 2
