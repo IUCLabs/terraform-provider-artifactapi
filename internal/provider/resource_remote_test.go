@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"maps"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -982,5 +986,68 @@ func TestValidateConfig_GithubApp(t *testing.T) {
 				t.Errorf("expected %d errors, got %v", tc.errs, resp.Diagnostics.Errors())
 			}
 		})
+	}
+}
+
+// fakeRemotes mimics /api/v2/remotes: POST creates, PUT is a full replace.
+type fakeRemotes struct {
+	mu      sync.Mutex
+	remotes map[string]map[string]any
+	puts    []map[string]any
+}
+
+func (f *fakeRemotes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var body map[string]any
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		b, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(b, &body); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
+	name := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/v2/remotes"), "/")
+	switch r.Method {
+	case http.MethodPost:
+		name, _ = body["name"].(string)
+	case http.MethodPut:
+		f.puts = append(f.puts, body)
+		body["name"] = name
+	case http.MethodGet:
+		body = f.remotes[name]
+		if body == nil {
+			http.NotFound(w, r)
+			return
+		}
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	f.remotes[name] = body
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func TestGithubApp_RemoteUnsetClearsIt(t *testing.T) {
+	fake := &fakeRemotes{remotes: map[string]map[string]any{}}
+	h := newResourceHarness(t, fake, "artifactapi_remote_generic", newRemoteResource("generic"))
+	base := map[string]any{"name": "gh", "base_url": "https://github.com"}
+	withApp := maps.Clone(base)
+	withApp["github_app"] = "x"
+
+	state := h.converge(h.null(), h.config(withApp))
+	if h.str(state, "github_app") != "x" {
+		t.Fatalf("github_app must be set after create: %s", h.str(state, "github_app"))
+	}
+
+	state = h.converge(state, h.config(base))
+	fake.mu.Lock()
+	put := fake.puts[len(fake.puts)-1]
+	fake.mu.Unlock()
+	if v, ok := put["github_app"]; ok && v != "" {
+		t.Errorf("removing github_app must clear it in the full-replace PUT: %v", put)
+	}
+	if h.str(state, "github_app") != "" {
+		t.Errorf("github_app must be empty after removal, got %q", h.str(state, "github_app"))
 	}
 }

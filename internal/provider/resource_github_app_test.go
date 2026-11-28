@@ -73,12 +73,14 @@ func expectedFingerprint(t *testing.T, k *rsa.PrivateKey) string {
 }
 
 // fakeGithubApps mimics /api/v2/github-apps: PUT creates or replaces, private_key is never returned.
+// PUT responses omit name so the provider must keep the configured one.
 type fakeGithubApps struct {
-	mu         sync.Mutex
-	apps       map[string]map[string]any
-	referenced map[string]bool
-	puts       []map[string]any
-	clock      int
+	mu           sync.Mutex
+	apps         map[string]map[string]any
+	referenced   map[string]bool
+	puts         []map[string]any
+	clock        int
+	createStatus int
 }
 
 func (f *fakeGithubApps) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +116,8 @@ func (f *fakeGithubApps) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.clock++
 		now := fmt.Sprintf("2026-11-28T00:00:%02dZ", f.clock)
 		created := now
-		if prev, ok := f.apps[name]; ok {
+		prev, existed := f.apps[name]
+		if existed {
 			created = prev["created_at"].(string)
 		}
 		base, _ := body["api_base_url"].(string)
@@ -127,7 +130,12 @@ func (f *fakeGithubApps) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"created_at": created, "updated_at": now,
 		}
 		f.apps[name] = app
-		_ = json.NewEncoder(w).Encode(app)
+		out := maps.Clone(app)
+		delete(out, "name")
+		if !existed && f.createStatus != 0 {
+			w.WriteHeader(f.createStatus)
+		}
+		_ = json.NewEncoder(w).Encode(out)
 	case http.MethodDelete:
 		if _, ok := f.apps[name]; !ok {
 			http.NotFound(w, r)
@@ -173,20 +181,20 @@ func (f *fakeGithubApps) lastPut(t *testing.T) map[string]any {
 	return f.puts[len(f.puts)-1]
 }
 
-type githubAppHarness struct {
+// resourceHarness drives one resource type through the protocol server against a fake API.
+type resourceHarness struct {
 	t        *testing.T
 	ctx      context.Context
 	server   tfprotov6.ProviderServer
+	typeName string
 	objType  tftypes.Object
 	computed map[string]bool
-	fake     *fakeGithubApps
 }
 
-func newGithubAppHarness(t *testing.T) *githubAppHarness {
+func newResourceHarness(t *testing.T, api http.Handler, typeName string, newResource func() resource.Resource) *resourceHarness {
 	t.Helper()
 	ctx := context.Background()
-	fake := &fakeGithubApps{apps: map[string]map[string]any{}, referenced: map[string]bool{}}
-	srv := httptest.NewServer(fake)
+	srv := httptest.NewServer(api)
 	t.Cleanup(srv.Close)
 
 	server := providerserver.NewProtocol6(New("test")())()
@@ -206,18 +214,29 @@ func newGithubAppHarness(t *testing.T) *githubAppHarness {
 	}
 
 	var rs resource.SchemaResponse
-	NewGithubAppResource().Schema(ctx, resource.SchemaRequest{}, &rs)
+	newResource().Schema(ctx, resource.SchemaRequest{}, &rs)
 	computed := map[string]bool{}
 	for name, a := range rs.Schema.Attributes {
 		computed[name] = a.IsComputed()
 	}
-	return &githubAppHarness{
-		t: t, ctx: ctx, server: server, fake: fake, computed: computed,
+	return &resourceHarness{
+		t: t, ctx: ctx, server: server, typeName: typeName, computed: computed,
 		objType: rs.Schema.Type().TerraformType(ctx).(tftypes.Object),
 	}
 }
 
-func (h *githubAppHarness) config(set map[string]any) tftypes.Value {
+type githubAppHarness struct {
+	*resourceHarness
+	fake *fakeGithubApps
+}
+
+func newGithubAppHarness(t *testing.T) *githubAppHarness {
+	t.Helper()
+	fake := &fakeGithubApps{apps: map[string]map[string]any{}, referenced: map[string]bool{}}
+	return &githubAppHarness{resourceHarness: newResourceHarness(t, fake, githubAppType, NewGithubAppResource), fake: fake}
+}
+
+func (h *resourceHarness) config(set map[string]any) tftypes.Value {
 	attrs := map[string]tftypes.Value{}
 	for name, at := range h.objType.AttributeTypes {
 		attrs[name] = tftypes.NewValue(at, nil)
@@ -236,7 +255,7 @@ func (h *githubAppHarness) baseConfig(key string, extra map[string]any) tftypes.
 	return h.config(set)
 }
 
-func (h *githubAppHarness) attrs(v tftypes.Value) map[string]tftypes.Value {
+func (h *resourceHarness) attrs(v tftypes.Value) map[string]tftypes.Value {
 	h.t.Helper()
 	var m map[string]tftypes.Value
 	if err := v.As(&m); err != nil {
@@ -246,7 +265,7 @@ func (h *githubAppHarness) attrs(v tftypes.Value) map[string]tftypes.Value {
 }
 
 // proposed mirrors Terraform core: config wins, null computed attributes carry the prior state.
-func (h *githubAppHarness) proposed(prior, config tftypes.Value) tftypes.Value {
+func (h *resourceHarness) proposed(prior, config tftypes.Value) tftypes.Value {
 	if prior.IsNull() {
 		return config
 	}
@@ -261,7 +280,7 @@ func (h *githubAppHarness) proposed(prior, config tftypes.Value) tftypes.Value {
 	return tftypes.NewValue(h.objType, out)
 }
 
-func (h *githubAppHarness) dv(v tftypes.Value) *tfprotov6.DynamicValue {
+func (h *resourceHarness) dv(v tftypes.Value) *tfprotov6.DynamicValue {
 	h.t.Helper()
 	d, err := tfprotov6.NewDynamicValue(h.objType, v)
 	if err != nil {
@@ -270,7 +289,7 @@ func (h *githubAppHarness) dv(v tftypes.Value) *tfprotov6.DynamicValue {
 	return &d
 }
 
-func (h *githubAppHarness) value(d *tfprotov6.DynamicValue) tftypes.Value {
+func (h *resourceHarness) value(d *tfprotov6.DynamicValue) tftypes.Value {
 	h.t.Helper()
 	v, err := d.Unmarshal(h.objType)
 	if err != nil {
@@ -279,10 +298,10 @@ func (h *githubAppHarness) value(d *tfprotov6.DynamicValue) tftypes.Value {
 	return v
 }
 
-func (h *githubAppHarness) plan(prior, config tftypes.Value) tftypes.Value {
+func (h *resourceHarness) plan(prior, config tftypes.Value) tftypes.Value {
 	h.t.Helper()
 	resp, err := h.server.PlanResourceChange(h.ctx, &tfprotov6.PlanResourceChangeRequest{
-		TypeName: githubAppType, PriorState: h.dv(prior), ProposedNewState: h.dv(h.proposed(prior, config)), Config: h.dv(config),
+		TypeName: h.typeName, PriorState: h.dv(prior), ProposedNewState: h.dv(h.proposed(prior, config)), Config: h.dv(config),
 	})
 	if err != nil || hasProtoErrors(resp.Diagnostics) {
 		h.t.Fatalf("plan: %v %v", err, resp.Diagnostics)
@@ -293,10 +312,10 @@ func (h *githubAppHarness) plan(prior, config tftypes.Value) tftypes.Value {
 	return h.value(resp.PlannedState)
 }
 
-func (h *githubAppHarness) applyDiags(prior, planned, config tftypes.Value) (tftypes.Value, []*tfprotov6.Diagnostic) {
+func (h *resourceHarness) applyDiags(prior, planned, config tftypes.Value) (tftypes.Value, []*tfprotov6.Diagnostic) {
 	h.t.Helper()
 	resp, err := h.server.ApplyResourceChange(h.ctx, &tfprotov6.ApplyResourceChangeRequest{
-		TypeName: githubAppType, PriorState: h.dv(prior), PlannedState: h.dv(planned), Config: h.dv(config),
+		TypeName: h.typeName, PriorState: h.dv(prior), PlannedState: h.dv(planned), Config: h.dv(config),
 	})
 	if err != nil {
 		h.t.Fatal(err)
@@ -304,7 +323,7 @@ func (h *githubAppHarness) applyDiags(prior, planned, config tftypes.Value) (tft
 	return h.value(resp.NewState), resp.Diagnostics
 }
 
-func (h *githubAppHarness) apply(prior, planned, config tftypes.Value) tftypes.Value {
+func (h *resourceHarness) apply(prior, planned, config tftypes.Value) tftypes.Value {
 	h.t.Helper()
 	v, diags := h.applyDiags(prior, planned, config)
 	if hasProtoErrors(diags) {
@@ -313,20 +332,20 @@ func (h *githubAppHarness) apply(prior, planned, config tftypes.Value) tftypes.V
 	return v
 }
 
-func (h *githubAppHarness) refresh(state tftypes.Value) tftypes.Value {
+func (h *resourceHarness) refresh(state tftypes.Value) tftypes.Value {
 	h.t.Helper()
-	resp, err := h.server.ReadResource(h.ctx, &tfprotov6.ReadResourceRequest{TypeName: githubAppType, CurrentState: h.dv(state)})
+	resp, err := h.server.ReadResource(h.ctx, &tfprotov6.ReadResourceRequest{TypeName: h.typeName, CurrentState: h.dv(state)})
 	if err != nil || hasProtoErrors(resp.Diagnostics) {
 		h.t.Fatalf("read: %v %v", err, resp.Diagnostics)
 	}
 	return h.value(resp.NewState)
 }
 
-func (h *githubAppHarness) converge(prior, config tftypes.Value) tftypes.Value {
+func (h *resourceHarness) converge(prior, config tftypes.Value) tftypes.Value {
 	return h.apply(prior, h.plan(prior, config), config)
 }
 
-func (h *githubAppHarness) str(v tftypes.Value, name string) string {
+func (h *resourceHarness) str(v tftypes.Value, name string) string {
 	h.t.Helper()
 	var s *string
 	if err := h.attrs(v)[name].As(&s); err != nil {
@@ -338,7 +357,7 @@ func (h *githubAppHarness) str(v tftypes.Value, name string) string {
 	return *s
 }
 
-func (h *githubAppHarness) null() tftypes.Value { return tftypes.NewValue(h.objType, nil) }
+func (h *resourceHarness) null() tftypes.Value { return tftypes.NewValue(h.objType, nil) }
 
 func TestGithubAppResource_Metadata(t *testing.T) {
 	if got := resourceTypeName(NewGithubAppResource); got != githubAppType {
@@ -414,6 +433,16 @@ func TestGithubAppResource_ValidateConfig(t *testing.T) {
 		{"url-http", map[string]any{"api_base_url": "http://api.github.com"}, "api_base_url"},
 		{"url-relative", map[string]any{"api_base_url": "/api/v3"}, "api_base_url"},
 		{"url-empty", map[string]any{"api_base_url": ""}, "api_base_url"},
+		{"url-trailing-slash", map[string]any{"api_base_url": "https://ghe.example.com/api/v3/"}, "trailing slash"},
+		{"url-root-slash", map[string]any{"api_base_url": "https://api.github.com/"}, "trailing slash"},
+		{"name-dots-dashes", map[string]any{"name": "Acme_bot-1.prod"}, ""},
+		{"name-max-length", map[string]any{"name": "a" + strings.Repeat("b", 127)}, ""},
+		{"name-unknown", map[string]any{"name": unknown}, ""},
+		{"name-empty", map[string]any{"name": ""}, "name"},
+		{"name-leading-dot", map[string]any{"name": ".acme"}, "name"},
+		{"name-slash", map[string]any{"name": "acme/bot"}, "name"},
+		{"name-space", map[string]any{"name": "acme bot"}, "name"},
+		{"name-too-long", map[string]any{"name": "a" + strings.Repeat("b", 128)}, "name"},
 	}
 	r := NewGithubAppResource().(*githubAppResource)
 	var sr resource.SchemaResponse
@@ -632,5 +661,14 @@ func TestGithubAppResource_ServerErrorSurfaces(t *testing.T) {
 	_, diags := h.applyDiags(h.null(), bad, bad)
 	if !hasProtoErrors(diags) || !strings.Contains(diags[0].Detail, "api error 400") {
 		t.Errorf("server rejection must surface: %v", diags)
+	}
+}
+
+func TestGithubAppResource_CreateAccepts201(t *testing.T) {
+	h := newGithubAppHarness(t)
+	h.fake.createStatus = http.StatusCreated
+	state := h.converge(h.null(), h.baseConfig(pkcs1PEM(testRSAKey(t, 0)), nil))
+	if h.str(state, "name") != "acme" || h.str(state, "api_base_url") != "https://api.github.com" {
+		t.Errorf("201 create must be read like 200: %v", state)
 	}
 }

@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -22,6 +24,8 @@ import (
 )
 
 const githubAppsPath = "/api/v2/github-apps/"
+
+var githubAppNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 var (
 	_ resource.Resource                   = &githubAppResource{}
@@ -61,7 +65,7 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Description: "Manages a GitHub App credential that GitHub-facing remotes reference via `github_app` to authenticate with installation tokens. The server never returns the private key; the configured key is kept in state and compared by fingerprint on refresh, so a key changed outside Terraform is rewritten on the next apply.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
-				Description: "Unique name of the GitHub App credential.",
+				Description: "Unique name of the GitHub App credential: 1-128 characters of letters, digits, `.`, `_` or `-`, starting with a letter or digit.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -76,12 +80,12 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:    true,
 			},
 			"private_key": schema.StringAttribute{
-				Description: "RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is unknown, so the next apply rewrites it.",
+				Description: "RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is null, so the next apply rewrites it.",
 				Required:    true,
 				Sensitive:   true,
 			},
 			"api_base_url": schema.StringAttribute{
-				Description: "Absolute https URL of the GitHub API; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.",
+				Description: "Absolute https URL of the GitHub API without a trailing slash; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.",
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
@@ -165,7 +169,7 @@ func (r *githubAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	newState := githubAppAPIToModel(got, state.PrivateKey)
+	newState := githubAppAPIToModel(state.Name, got, state.PrivateKey)
 	if !privateKeyMatches(newState.PrivateKey, got.PrivateKeyFingerprint) {
 		newState.PrivateKey = types.StringNull()
 	}
@@ -231,6 +235,11 @@ func (r *githubAppResource) ValidateConfig(ctx context.Context, req resource.Val
 		return
 	}
 
+	if !config.Name.IsNull() && !config.Name.IsUnknown() && !githubAppNameRE.MatchString(config.Name.ValueString()) {
+		resp.Diagnostics.AddAttributeError(path.Root("name"), "invalid name",
+			fmt.Sprintf("name must be 1-128 characters of letters, digits, '.', '_' or '-' and start with a letter or digit, got %q.", config.Name.ValueString()))
+	}
+
 	for name, v := range map[string]types.Int64{"app_id": config.AppID, "installation_id": config.InstallationID} {
 		if knownInt64(v) && v.ValueInt64() <= 0 {
 			resp.Diagnostics.AddAttributeError(path.Root(name), "invalid "+name,
@@ -266,12 +275,12 @@ func (r *githubAppResource) put(ctx context.Context, plan githubAppResourceModel
 		diags.AddError(summary, err.Error())
 		return githubAppResourceModel{}, false
 	}
-	return githubAppAPIToModel(got, plan.PrivateKey), true
+	return githubAppAPIToModel(plan.Name, got, plan.PrivateKey), true
 }
 
-func githubAppAPIToModel(api githubAppAPI, privateKey types.String) githubAppResourceModel {
+func githubAppAPIToModel(name types.String, api githubAppAPI, privateKey types.String) githubAppResourceModel {
 	return githubAppResourceModel{
-		Name:                  types.StringValue(api.Name),
+		Name:                  name,
 		AppID:                 types.Int64Value(api.AppID),
 		InstallationID:        types.Int64Value(api.InstallationID),
 		PrivateKey:            privateKey,
@@ -334,6 +343,9 @@ func validateHTTPSURL(s string) error {
 	}
 	if u.Scheme != "https" || u.Host == "" {
 		return fmt.Errorf("api_base_url must be an absolute https URL, got %q", s)
+	}
+	if strings.HasSuffix(s, "/") {
+		return fmt.Errorf("api_base_url must not end with a slash; remove the trailing slash from %q", s)
 	}
 	return nil
 }

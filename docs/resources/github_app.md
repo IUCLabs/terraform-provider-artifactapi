@@ -41,12 +41,12 @@ resource "artifactapi_remote_github_rpm" "acme_tools" {
 
 - `app_id` (Number) GitHub App ID; must be positive.
 - `installation_id` (Number) Installation ID of the app on the target account or organisation; must be positive.
-- `name` (String) Unique name of the GitHub App credential.
-- `private_key` (String, Sensitive) RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is unknown, so the next apply rewrites it.
+- `name` (String) Unique name of the GitHub App credential: 1-128 characters of letters, digits, `.`, `_` or `-`, starting with a letter or digit.
+- `private_key` (String, Sensitive) RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is null, so the next apply rewrites it.
 
 ### Optional
 
-- `api_base_url` (String) Absolute https URL of the GitHub API; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.
+- `api_base_url` (String) Absolute https URL of the GitHub API without a trailing slash; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.
 - `description` (String) Human-readable description.
 
 ### Read-Only
