@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -43,6 +44,8 @@ type githubAppResourceModel struct {
 	AppID                 types.Int64  `tfsdk:"app_id"`
 	InstallationID        types.Int64  `tfsdk:"installation_id"`
 	PrivateKey            types.String `tfsdk:"private_key"`
+	PrivateKeyWO          types.String `tfsdk:"private_key_wo"`
+	PrivateKeyWOVersion   types.Int64  `tfsdk:"private_key_wo_version"`
 	APIBaseURL            types.String `tfsdk:"api_base_url"`
 	Description           types.String `tfsdk:"description"`
 	PrivateKeyFingerprint types.String `tfsdk:"private_key_fingerprint"`
@@ -62,7 +65,7 @@ func (r *githubAppResource) Metadata(_ context.Context, req resource.MetadataReq
 
 func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a GitHub App credential that GitHub-facing remotes reference via `github_app` to authenticate with installation tokens. The server never returns the private key; the configured key is kept in state and compared by fingerprint on refresh, so a key changed outside Terraform is rewritten on the next apply.",
+		Description: "Manages a GitHub App credential that GitHub-facing remotes reference via `github_app` to authenticate with installation tokens. Set the key with `private_key_wo` (Terraform 1.11+, never stored in plan or state) or `private_key` (stored in state). The server never returns the key; its fingerprint is compared with the configured key on every plan, so a key changed outside Terraform is rewritten on the next apply.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Description: "Unique name of the GitHub App credential: 1-128 characters of letters, digits, `.`, `_` or `-`, starting with a letter or digit.",
@@ -80,9 +83,19 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:    true,
 			},
 			"private_key": schema.StringAttribute{
-				Description: "RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is null, so the next apply rewrites it.",
-				Required:    true,
+				Description: "RSA private key of the app in PEM form (PKCS#1 or PKCS#8), stored in Terraform state. Prefer `private_key_wo` on Terraform 1.11+. Exactly one of `private_key` or `private_key_wo` is required.",
+				Optional:    true,
 				Sensitive:   true,
+			},
+			"private_key_wo": schema.StringAttribute{
+				Description: "Write-only RSA private key of the app in PEM form (PKCS#1 or PKCS#8); requires Terraform 1.11+ and is never stored in plan or state. Recommended over `private_key`. The key is resent whenever its fingerprint differs from the server's or `private_key_wo_version` changes.",
+				Optional:    true,
+				Sensitive:   true,
+				WriteOnly:   true,
+			},
+			"private_key_wo_version": schema.Int64Attribute{
+				Description: "Change this value to force `private_key_wo` to be resent; only valid with `private_key_wo`.",
+				Optional:    true,
 			},
 			"api_base_url": schema.StringAttribute{
 				Description: "Absolute https URL of the GitHub API without a trailing slash; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.",
@@ -146,7 +159,11 @@ func (r *githubAppResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	state, ok := r.put(ctx, plan, "create github app failed", &resp.Diagnostics)
+	key := configuredPrivateKey(ctx, plan, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state, ok := r.put(ctx, plan, key, "create github app failed", &resp.Diagnostics)
 	if ok {
 		resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 	}
@@ -169,7 +186,7 @@ func (r *githubAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	newState := githubAppAPIToModel(state.Name, got, state.PrivateKey)
+	newState := githubAppAPIToModel(state, got)
 	if !privateKeyMatches(newState.PrivateKey, got.PrivateKeyFingerprint) {
 		newState.PrivateKey = types.StringNull()
 	}
@@ -182,7 +199,11 @@ func (r *githubAppResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	state, ok := r.put(ctx, plan, "update github app failed", &resp.Diagnostics)
+	key := configuredPrivateKey(ctx, plan, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state, ok := r.put(ctx, plan, key, "update github app failed", &resp.Diagnostics)
 	if ok {
 		resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 	}
@@ -214,10 +235,14 @@ func (r *githubAppResource) ModifyPlan(ctx context.Context, req resource.ModifyP
 	if req.Plan.Raw.IsNull() {
 		return
 	}
-	var key types.String
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("private_key"), &key)...)
+	var config githubAppResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	key := config.PrivateKey
+	if key.IsNull() {
+		key = config.PrivateKeyWO
 	}
 	fp := types.StringUnknown()
 	if !key.IsNull() && !key.IsUnknown() {
@@ -226,6 +251,15 @@ func (r *githubAppResource) ModifyPlan(ctx context.Context, req resource.ModifyP
 		}
 	}
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("private_key_fingerprint"), fp)...)
+	if req.State.Raw.IsNull() {
+		return
+	}
+	var stateFP types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("private_key_fingerprint"), &stateFP)...)
+	// A write-only key leaves no other diff, so a fingerprint change alone must still plan an update.
+	if !fp.Equal(stateFP) {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("updated_at"), types.StringUnknown())...)
+	}
 }
 
 func (r *githubAppResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
@@ -247,10 +281,22 @@ func (r *githubAppResource) ValidateConfig(ctx context.Context, req resource.Val
 		}
 	}
 
-	if !config.PrivateKey.IsNull() && !config.PrivateKey.IsUnknown() {
-		if _, err := parseRSAPrivateKey(config.PrivateKey.ValueString()); err != nil {
-			resp.Diagnostics.AddAttributeError(path.Root("private_key"), "invalid private_key", err.Error())
+	for name, v := range map[string]types.String{"private_key": config.PrivateKey, "private_key_wo": config.PrivateKeyWO} {
+		if !v.IsNull() && !v.IsUnknown() {
+			if _, err := parseRSAPrivateKey(v.ValueString()); err != nil {
+				resp.Diagnostics.AddAttributeError(path.Root(name), "invalid "+name, name+" "+err.Error())
+			}
 		}
+	}
+
+	if !config.PrivateKey.IsUnknown() && !config.PrivateKeyWO.IsUnknown() && config.PrivateKey.IsNull() == config.PrivateKeyWO.IsNull() {
+		resp.Diagnostics.AddAttributeError(path.Root("private_key_wo"), "invalid private key configuration",
+			"Exactly one of private_key_wo or private_key must be set; prefer private_key_wo on Terraform 1.11+.")
+	}
+
+	if !config.PrivateKeyWOVersion.IsNull() && config.PrivateKeyWO.IsNull() {
+		resp.Diagnostics.AddAttributeError(path.Root("private_key_wo_version"), "invalid private_key_wo_version",
+			"private_key_wo_version only applies to private_key_wo; remove it or set private_key_wo.")
 	}
 
 	if !config.APIBaseURL.IsNull() && !config.APIBaseURL.IsUnknown() {
@@ -260,11 +306,32 @@ func (r *githubAppResource) ValidateConfig(ctx context.Context, req resource.Val
 	}
 }
 
-func (r *githubAppResource) put(ctx context.Context, plan githubAppResourceModel, summary string, diags *diag.Diagnostics) (githubAppResourceModel, bool) {
+// configuredPrivateKey returns private_key from the plan, or private_key_wo from config since write-only values are null in plans.
+func configuredPrivateKey(ctx context.Context, plan githubAppResourceModel, config tfsdk.Config, diags *diag.Diagnostics) string {
+	if !plan.PrivateKey.IsNull() {
+		return plan.PrivateKey.ValueString()
+	}
+	var wo types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("private_key_wo"), &wo)...)
+	if diags.HasError() {
+		return ""
+	}
+	if wo.IsNull() || wo.IsUnknown() {
+		diags.AddAttributeError(path.Root("private_key_wo"), "missing private key", "Set private_key_wo or private_key.")
+		return ""
+	}
+	if _, err := parseRSAPrivateKey(wo.ValueString()); err != nil {
+		diags.AddAttributeError(path.Root("private_key_wo"), "invalid private_key_wo", "private_key_wo "+err.Error())
+		return ""
+	}
+	return wo.ValueString()
+}
+
+func (r *githubAppResource) put(ctx context.Context, plan githubAppResourceModel, key, summary string, diags *diag.Diagnostics) (githubAppResourceModel, bool) {
 	body := githubAppAPI{
 		AppID:          plan.AppID.ValueInt64(),
 		InstallationID: plan.InstallationID.ValueInt64(),
-		PrivateKey:     plan.PrivateKey.ValueString(),
+		PrivateKey:     key,
 		Description:    plan.Description.ValueString(),
 	}
 	if !plan.APIBaseURL.IsUnknown() {
@@ -275,15 +342,18 @@ func (r *githubAppResource) put(ctx context.Context, plan githubAppResourceModel
 		diags.AddError(summary, err.Error())
 		return githubAppResourceModel{}, false
 	}
-	return githubAppAPIToModel(plan.Name, got, plan.PrivateKey), true
+	return githubAppAPIToModel(plan, got), true
 }
 
-func githubAppAPIToModel(name types.String, api githubAppAPI, privateKey types.String) githubAppResourceModel {
+// githubAppAPIToModel takes name, private_key and private_key_wo_version from base, the rest from the server.
+func githubAppAPIToModel(base githubAppResourceModel, api githubAppAPI) githubAppResourceModel {
 	return githubAppResourceModel{
-		Name:                  name,
+		Name:                  base.Name,
 		AppID:                 types.Int64Value(api.AppID),
 		InstallationID:        types.Int64Value(api.InstallationID),
-		PrivateKey:            privateKey,
+		PrivateKey:            base.PrivateKey,
+		PrivateKeyWO:          types.StringNull(),
+		PrivateKeyWOVersion:   base.PrivateKeyWOVersion,
 		APIBaseURL:            types.StringValue(api.APIBaseURL),
 		Description:           types.StringValue(api.Description),
 		PrivateKeyFingerprint: types.StringValue(api.PrivateKeyFingerprint),
@@ -307,18 +377,18 @@ func privateKeyMatches(key types.String, serverFingerprint string) bool {
 func parseRSAPrivateKey(s string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(s))
 	if block == nil {
-		return nil, errors.New("private_key must be a PEM-encoded RSA private key")
+		return nil, errors.New("must be a PEM-encoded RSA private key")
 	}
 	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return k, nil
 	}
 	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("private_key is not a PKCS#1 or PKCS#8 private key: %w", err)
+		return nil, fmt.Errorf("is not a PKCS#1 or PKCS#8 private key: %w", err)
 	}
 	rk, ok := k.(*rsa.PrivateKey)
 	if !ok {
-		return nil, fmt.Errorf("private_key must be an RSA key, got %T", k)
+		return nil, fmt.Errorf("must be an RSA key, got %T", k)
 	}
 	return rk, nil
 }

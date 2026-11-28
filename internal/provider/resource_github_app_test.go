@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -183,12 +184,13 @@ func (f *fakeGithubApps) lastPut(t *testing.T) map[string]any {
 
 // resourceHarness drives one resource type through the protocol server against a fake API.
 type resourceHarness struct {
-	t        *testing.T
-	ctx      context.Context
-	server   tfprotov6.ProviderServer
-	typeName string
-	objType  tftypes.Object
-	computed map[string]bool
+	t         *testing.T
+	ctx       context.Context
+	server    tfprotov6.ProviderServer
+	typeName  string
+	objType   tftypes.Object
+	computed  map[string]bool
+	writeOnly map[string]bool
 }
 
 func newResourceHarness(t *testing.T, api http.Handler, typeName string, newResource func() resource.Resource) *resourceHarness {
@@ -215,12 +217,13 @@ func newResourceHarness(t *testing.T, api http.Handler, typeName string, newReso
 
 	var rs resource.SchemaResponse
 	newResource().Schema(ctx, resource.SchemaRequest{}, &rs)
-	computed := map[string]bool{}
+	computed, writeOnly := map[string]bool{}, map[string]bool{}
 	for name, a := range rs.Schema.Attributes {
 		computed[name] = a.IsComputed()
+		writeOnly[name] = a.IsWriteOnly()
 	}
 	return &resourceHarness{
-		t: t, ctx: ctx, server: server, typeName: typeName, computed: computed,
+		t: t, ctx: ctx, server: server, typeName: typeName, computed: computed, writeOnly: writeOnly,
 		objType: rs.Schema.Type().TerraformType(ctx).(tftypes.Object),
 	}
 }
@@ -264,16 +267,19 @@ func (h *resourceHarness) attrs(v tftypes.Value) map[string]tftypes.Value {
 	return m
 }
 
-// proposed mirrors Terraform core: config wins, null computed attributes carry the prior state.
+// proposed mirrors Terraform core: config wins, null computed attributes carry the prior state, write-only attributes are null.
 func (h *resourceHarness) proposed(prior, config tftypes.Value) tftypes.Value {
-	if prior.IsNull() {
-		return config
+	var p map[string]tftypes.Value
+	if !prior.IsNull() {
+		p = h.attrs(prior)
 	}
-	p := h.attrs(prior)
 	out := map[string]tftypes.Value{}
 	for name, v := range h.attrs(config) {
 		out[name] = v
-		if v.IsNull() && h.computed[name] {
+		switch {
+		case h.writeOnly[name]:
+			out[name] = tftypes.NewValue(v.Type(), nil)
+		case v.IsNull() && h.computed[name] && p != nil:
 			out[name] = p[name]
 		}
 	}
@@ -369,13 +375,21 @@ func TestGithubAppResource_Schema(t *testing.T) {
 	var resp resource.SchemaResponse
 	NewGithubAppResource().Schema(context.Background(), resource.SchemaRequest{}, &resp)
 	a := resp.Schema.Attributes
-	for _, name := range []string{"name", "app_id", "installation_id", "private_key"} {
+	for _, name := range []string{"name", "app_id", "installation_id"} {
 		if !a[name].IsRequired() {
 			t.Errorf("%s must be required", name)
 		}
 	}
-	if !a["private_key"].IsSensitive() {
-		t.Error("private_key must be sensitive")
+	for _, name := range []string{"private_key", "private_key_wo"} {
+		if !a[name].IsOptional() || !a[name].IsSensitive() || a[name].IsComputed() {
+			t.Errorf("%s must be optional, sensitive and not computed", name)
+		}
+	}
+	if !a["private_key_wo"].IsWriteOnly() || a["private_key"].IsWriteOnly() {
+		t.Error("only private_key_wo must be write-only")
+	}
+	if !a["private_key_wo_version"].IsOptional() || a["private_key_wo_version"].IsWriteOnly() {
+		t.Error("private_key_wo_version must be optional and stored in state")
 	}
 	if !a["api_base_url"].IsOptional() || !a["api_base_url"].IsComputed() {
 		t.Error("api_base_url must be optional and computed")
@@ -443,6 +457,15 @@ func TestGithubAppResource_ValidateConfig(t *testing.T) {
 		{"name-slash", map[string]any{"name": "acme/bot"}, "name"},
 		{"name-space", map[string]any{"name": "acme bot"}, "name"},
 		{"name-too-long", map[string]any{"name": "a" + strings.Repeat("b", 128)}, "name"},
+		{"wo-only", map[string]any{"private_key": nil, "private_key_wo": pkcs8PEM(t, k)}, ""},
+		{"wo-with-version", map[string]any{"private_key": nil, "private_key_wo": pkcs1PEM(k), "private_key_wo_version": 3}, ""},
+		{"wo-unknown", map[string]any{"private_key": nil, "private_key_wo": unknown}, ""},
+		{"key-unknown-and-wo", map[string]any{"private_key": unknown, "private_key_wo": pkcs1PEM(k)}, ""},
+		{"wo-not-pem", map[string]any{"private_key": nil, "private_key_wo": "not a key"}, "private_key_wo"},
+		{"wo-not-rsa", map[string]any{"private_key": nil, "private_key_wo": pkcs8PEM(t, ec)}, "private_key_wo"},
+		{"both-keys", map[string]any{"private_key_wo": pkcs1PEM(k)}, "Exactly one of private_key_wo or private_key"},
+		{"no-key", map[string]any{"private_key": nil}, "Exactly one of private_key_wo or private_key"},
+		{"version-without-wo", map[string]any{"private_key_wo_version": 1}, "private_key_wo_version only applies"},
 	}
 	r := NewGithubAppResource().(*githubAppResource)
 	var sr resource.SchemaResponse
@@ -670,5 +693,187 @@ func TestGithubAppResource_CreateAccepts201(t *testing.T) {
 	state := h.converge(h.null(), h.baseConfig(pkcs1PEM(testRSAKey(t, 0)), nil))
 	if h.str(state, "name") != "acme" || h.str(state, "api_base_url") != "https://api.github.com" {
 		t.Errorf("201 create must be read like 200: %v", state)
+	}
+}
+
+func (h *githubAppHarness) woConfig(key string, extra map[string]any) tftypes.Value {
+	set := map[string]any{"name": "acme", "app_id": 123, "installation_id": 456, "private_key_wo": key}
+	for k, v := range extra {
+		set[k] = v
+	}
+	return h.config(set)
+}
+
+func (h *githubAppHarness) putCount() int {
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	return len(h.fake.puts)
+}
+
+func (h *githubAppHarness) assertNoKeyIn(what string, v tftypes.Value) {
+	h.t.Helper()
+	a := h.attrs(v)
+	if !a["private_key_wo"].IsNull() || !a["private_key"].IsNull() {
+		h.t.Errorf("%s must not hold the private key: private_key=%v private_key_wo=%v", what, a["private_key"], a["private_key_wo"])
+	}
+}
+
+func TestGithubAppResource_WriteOnlyNeedsTerraform111(t *testing.T) {
+	h := newGithubAppHarness(t)
+	cfg := h.woConfig(pkcs1PEM(testRSAKey(t, 0)), nil)
+	for _, allowed := range []bool{false, true} {
+		resp, err := h.server.ValidateResourceConfig(h.ctx, &tfprotov6.ValidateResourceConfigRequest{
+			TypeName: githubAppType, Config: h.dv(cfg),
+			ClientCapabilities: &tfprotov6.ValidateResourceConfigClientCapabilities{WriteOnlyAttributesAllowed: allowed},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := hasProtoErrors(resp.Diagnostics); got == allowed {
+			t.Errorf("write-only allowed=%v: unexpected diagnostics %v", allowed, resp.Diagnostics)
+		}
+		if !allowed && !strings.Contains(resp.Diagnostics[0].Detail, "Terraform 1.11") {
+			t.Errorf("rejection must name the Terraform version: %s", resp.Diagnostics[0].Detail)
+		}
+	}
+}
+
+func TestGithubAppWriteOnly_CreateReadUpdate(t *testing.T) {
+	h := newGithubAppHarness(t)
+	k := testRSAKey(t, 0)
+	key := pkcs1PEM(k)
+	cfg := h.woConfig(key, map[string]any{"description": "acme bot"})
+
+	planned := h.plan(h.null(), cfg)
+	h.assertNoKeyIn("plan", planned)
+	if got := h.str(planned, "private_key_fingerprint"); got != expectedFingerprint(t, k) {
+		t.Errorf("planned fingerprint must be computed from the write-only key: %s", got)
+	}
+	state := h.apply(h.null(), planned, cfg)
+	h.assertNoKeyIn("state", state)
+	if put := h.fake.lastPut(t); put["private_key"] != key {
+		t.Errorf("create must PUT the write-only key, got %v", put["private_key"])
+	}
+	if h.str(state, "private_key_fingerprint") != expectedFingerprint(t, k) {
+		t.Errorf("state fingerprint: %s", h.str(state, "private_key_fingerprint"))
+	}
+
+	state = h.refresh(state)
+	h.assertNoKeyIn("refreshed state", state)
+	if p := h.plan(state, cfg); !p.Equal(state) {
+		t.Errorf("unchanged config must plan no changes, got %v", p)
+	}
+
+	cfg = h.woConfig(key, map[string]any{"description": "renamed"})
+	puts := h.putCount()
+	state = h.converge(state, cfg)
+	h.assertNoKeyIn("updated state", state)
+	if h.putCount() != puts+1 || h.fake.lastPut(t)["private_key"] != key {
+		t.Error("update must resend the write-only key in the PUT body")
+	}
+}
+
+func TestGithubAppWriteOnly_KeyRotationPlansUpdate(t *testing.T) {
+	h := newGithubAppHarness(t)
+	state := h.converge(h.null(), h.woConfig(pkcs1PEM(testRSAKey(t, 0)), nil))
+
+	k2 := testRSAKey(t, 1)
+	key2 := pkcs8PEM(t, k2)
+	cfg := h.woConfig(key2, nil)
+	planned := h.plan(state, cfg)
+	if planned.Equal(state) {
+		t.Fatal("a changed write-only key must plan an update")
+	}
+	if h.str(planned, "private_key_fingerprint") != expectedFingerprint(t, k2) || h.attrs(planned)["updated_at"].IsKnown() {
+		t.Errorf("plan must show the new fingerprint and recompute updated_at: %v", planned)
+	}
+	state = h.apply(state, planned, cfg)
+	h.assertNoKeyIn("state", state)
+	if h.fake.lastPut(t)["private_key"] != key2 {
+		t.Error("apply must PUT the rotated key")
+	}
+	if p := h.plan(h.refresh(state), cfg); !p.Equal(h.refresh(state)) {
+		t.Error("after rotation the plan must be clean")
+	}
+}
+
+func TestGithubAppWriteOnly_ServerDriftPlansRewrite(t *testing.T) {
+	h := newGithubAppHarness(t)
+	k := testRSAKey(t, 0)
+	key := pkcs1PEM(k)
+	cfg := h.woConfig(key, nil)
+	state := h.converge(h.null(), cfg)
+
+	rotated := expectedFingerprint(t, testRSAKey(t, 1))
+	h.fake.rotate("acme", rotated)
+	state = h.refresh(state)
+	if h.str(state, "private_key_fingerprint") != rotated {
+		t.Fatalf("refresh must record the server fingerprint, got %s", h.str(state, "private_key_fingerprint"))
+	}
+	planned := h.plan(state, cfg)
+	if h.str(planned, "private_key_fingerprint") != expectedFingerprint(t, k) {
+		t.Fatalf("drift must plan the configured key's fingerprint: %v", planned)
+	}
+	h.apply(state, planned, cfg)
+	if h.fake.lastPut(t)["private_key"] != key {
+		t.Error("apply must PUT the configured key")
+	}
+}
+
+func TestGithubAppWriteOnly_VersionBumpResends(t *testing.T) {
+	h := newGithubAppHarness(t)
+	key := pkcs1PEM(testRSAKey(t, 0))
+	state := h.converge(h.null(), h.woConfig(key, map[string]any{"private_key_wo_version": 1}))
+	if p := h.plan(state, h.woConfig(key, map[string]any{"private_key_wo_version": 1})); !p.Equal(state) {
+		t.Fatal("same version and key must plan no changes")
+	}
+
+	cfg := h.woConfig(key, map[string]any{"private_key_wo_version": 2})
+	planned := h.plan(state, cfg)
+	if planned.Equal(state) {
+		t.Fatal("a version bump must plan an update")
+	}
+	puts := h.putCount()
+	state = h.apply(state, planned, cfg)
+	h.assertNoKeyIn("state", state)
+	if h.putCount() != puts+1 || h.fake.lastPut(t)["private_key"] != key {
+		t.Error("a version bump must resend the key")
+	}
+	var v *big.Float
+	if err := h.attrs(state)["private_key_wo_version"].As(&v); err != nil || v == nil || v.String() != "2" {
+		t.Errorf("state must record private_key_wo_version 2, got %v", v)
+	}
+}
+
+func TestGithubAppWriteOnly_Import(t *testing.T) {
+	h := newGithubAppHarness(t)
+	key := pkcs1PEM(testRSAKey(t, 0))
+	h.converge(h.null(), h.woConfig(key, nil))
+
+	resp, err := h.server.ImportResourceState(h.ctx, &tfprotov6.ImportResourceStateRequest{TypeName: githubAppType, ID: "acme"})
+	if err != nil || hasProtoErrors(resp.Diagnostics) || len(resp.ImportedResources) != 1 {
+		t.Fatalf("import: %v %v", err, resp)
+	}
+	state := h.refresh(h.value(resp.ImportedResources[0].State))
+	h.assertNoKeyIn("imported state", state)
+	if p := h.plan(state, h.woConfig(key, nil)); !p.Equal(state) {
+		t.Errorf("a matching key after import must plan no changes, got %v", p)
+	}
+	if p := h.plan(state, h.woConfig(key, map[string]any{"private_key_wo_version": 1})); p.Equal(state) {
+		t.Error("setting private_key_wo_version after import must plan a resend")
+	}
+}
+
+func TestGithubAppWriteOnly_MigrationDropsStoredKey(t *testing.T) {
+	h := newGithubAppHarness(t)
+	key := pkcs1PEM(testRSAKey(t, 0))
+	state := h.converge(h.null(), h.baseConfig(key, nil))
+	if h.str(state, "private_key") != key {
+		t.Fatal("private_key must be stored in state")
+	}
+	state = h.converge(state, h.woConfig(key, nil))
+	h.assertNoKeyIn("state after switching to private_key_wo", state)
+	if h.fake.lastPut(t)["private_key"] != key {
+		t.Error("switching to private_key_wo must PUT the key")
 	}
 }

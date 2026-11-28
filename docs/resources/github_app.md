@@ -3,12 +3,12 @@
 page_title: "artifactapi_github_app Resource - artifactapi"
 subcategory: ""
 description: |-
-  Manages a GitHub App credential that GitHub-facing remotes reference via github_app to authenticate with installation tokens. The server never returns the private key; the configured key is kept in state and compared by fingerprint on refresh, so a key changed outside Terraform is rewritten on the next apply.
+  Manages a GitHub App credential that GitHub-facing remotes reference via github_app to authenticate with installation tokens. Set the key with private_key_wo (Terraform 1.11+, never stored in plan or state) or private_key (stored in state). The server never returns the key; its fingerprint is compared with the configured key on every plan, so a key changed outside Terraform is rewritten on the next apply.
 ---
 
 # artifactapi_github_app (Resource)
 
-Manages a GitHub App credential that GitHub-facing remotes reference via `github_app` to authenticate with installation tokens. The server never returns the private key; the configured key is kept in state and compared by fingerprint on refresh, so a key changed outside Terraform is rewritten on the next apply.
+Manages a GitHub App credential that GitHub-facing remotes reference via `github_app` to authenticate with installation tokens. Set the key with `private_key_wo` (Terraform 1.11+, never stored in plan or state) or `private_key` (stored in state). The server never returns the key; its fingerprint is compared with the configured key on every plan, so a key changed outside Terraform is rewritten on the next apply.
 
 ## Example Usage
 
@@ -19,8 +19,18 @@ resource "artifactapi_github_app" "acme" {
   name            = "acme"
   app_id          = 123456
   installation_id = 7654321
-  private_key     = file("acme-app.private-key.pem")
   description     = "acme GitHub App"
+
+  # Write-only (Terraform 1.11+): never stored in plan or state. The key can
+  # also come from an ephemeral resource such as ephemeral "vault_kv_secret_v2":
+  #   private_key_wo = ephemeral.vault_kv_secret_v2.acme.data["private_key"]
+  private_key_wo = file("acme-app.private-key.pem")
+  # Bump to resend the key; a key whose fingerprint differs from the server's
+  # is resent automatically.
+  private_key_wo_version = 1
+
+  # Terraform < 1.11: use private_key instead (stored in state).
+  # private_key = file("acme-app.private-key.pem")
 
   # Optional: GitHub Enterprise Server API root (default https://api.github.com).
   # api_base_url = "https://ghe.example.com/api/v3"
@@ -42,12 +52,16 @@ resource "artifactapi_remote_github_rpm" "acme_tools" {
 - `app_id` (Number) GitHub App ID; must be positive.
 - `installation_id` (Number) Installation ID of the app on the target account or organisation; must be positive.
 - `name` (String) Unique name of the GitHub App credential: 1-128 characters of letters, digits, `.`, `_` or `-`, starting with a letter or digit.
-- `private_key` (String, Sensitive) RSA private key of the app in PEM form (PKCS#1 or PKCS#8). Write-only on the server and stored in Terraform state; after import it is null, so the next apply rewrites it.
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `api_base_url` (String) Absolute https URL of the GitHub API without a trailing slash; the server defaults it to `https://api.github.com`. Set it for GitHub Enterprise Server; removing it from configuration keeps the current value.
 - `description` (String) Human-readable description.
+- `private_key` (String, Sensitive) RSA private key of the app in PEM form (PKCS#1 or PKCS#8), stored in Terraform state. Prefer `private_key_wo` on Terraform 1.11+. Exactly one of `private_key` or `private_key_wo` is required.
+- `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only RSA private key of the app in PEM form (PKCS#1 or PKCS#8); requires Terraform 1.11+ and is never stored in plan or state. Recommended over `private_key`. The key is resent whenever its fingerprint differs from the server's or `private_key_wo_version` changes.
+- `private_key_wo_version` (Number) Change this value to force `private_key_wo` to be resent; only valid with `private_key_wo`.
 
 ### Read-Only
 
@@ -62,7 +76,8 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# Import by name. The private key is never returned by the server, so the
-# next apply rewrites it from configuration.
+# Import by name. The server never returns the private key: with private_key
+# the next apply rewrites it; with private_key_wo it is resent only if its
+# fingerprint differs from the server's or private_key_wo_version is set.
 terraform import artifactapi_github_app.acme acme
 ```
