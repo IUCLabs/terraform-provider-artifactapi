@@ -209,7 +209,7 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"github_app": schema.StringAttribute{
-			Description: "Name of an `artifactapi_github_app` whose installation token authenticates upstream GitHub requests; only valid on github_rpm/github_deb/github_alpine/vcs/generic remotes and conflicts with `username`/`password`.",
+			Description: "Name of an `artifactapi_github_app` whose installation token authenticates upstream GitHub requests; valid on github_rpm, github_deb and github_alpine remotes, and on generic/vcs remotes whose `base_url` is a GitHub host (checked server-side); cannot be combined with `username`/`password`.",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"upstream_dial_timeout": schema.Int64Attribute{
@@ -369,7 +369,7 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 			resp.Diagnostics.AddAttributeError(
 				path.Root("github_app"),
 				"github_app not supported for this remote type",
-				fmt.Sprintf("github_app is only valid on github_rpm/github_deb/github_alpine/vcs/generic remotes, not %q remotes.", r.packageType),
+				fmt.Sprintf("github_app is only valid on github_rpm/github_deb/github_alpine remotes and on generic/vcs remotes with a GitHub base_url, not %q remotes.", r.packageType),
 			)
 		}
 		for _, attr := range []struct {
