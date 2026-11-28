@@ -28,4 +28,6 @@ resource "artifactapi_remote_github_deb" "acme_tools" {
 
   # Optional: token for private repos / higher GitHub API rate limits.
   # password = var.github_token
+  # Or authenticate as a GitHub App (conflicts with username/password).
+  # github_app = artifactapi_github_app.acme.name
 }

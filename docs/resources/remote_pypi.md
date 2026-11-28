@@ -41,6 +41,7 @@ resource "artifactapi_remote_pypi" "pypi" {
 - `cache_repodata` (Boolean) Cache generated repodata (github_rpm only).
 - `check_mutable` (Boolean) Enable conditional revalidation for mutable artifacts.
 - `description` (String) Human-readable description.
+- `github_app` (String) Name of an `artifactapi_github_app` whose installation token authenticates upstream GitHub requests; valid on github_rpm, github_deb and github_alpine remotes, and on generic/vcs remotes whose `base_url` is a GitHub host (checked server-side); cannot be combined with `username`/`password`.
 - `immutable_patterns` (List of String) Override: paths that should be immutable even if the provider would classify as mutable.
 - `immutable_ttl` (Number) TTL in seconds for immutable artifacts (0 = forever).
 - `mirror_strategy` (String) Mirror load-balancing strategy across base_url + mirrorlist; only valid on remote rpm/deb/apk (alpine) repos. One of "round_robin" (default) or "least_conn".

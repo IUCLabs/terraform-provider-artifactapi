@@ -45,6 +45,7 @@ output "dockerhub_package_type" {
 - `cache_repodata` (Boolean) Whether generated repodata is cached (github_rpm only).
 - `check_mutable` (Boolean) Whether mutable artifacts are conditionally revalidated.
 - `description` (String) Human-readable description.
+- `github_app` (String) Name of the GitHub App authenticating upstream GitHub requests.
 - `immutable_patterns` (List of String) Paths forced to be treated as immutable.
 - `immutable_ttl` (Number) TTL in seconds for immutable artifacts (0 = forever).
 - `managed_by` (String) What manages the repository (e.g. terraform).

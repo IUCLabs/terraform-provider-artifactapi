@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,7 +72,7 @@ func (c *apiClient) do(ctx context.Context, method, path string, body, out any) 
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+		return &apiError{status: resp.StatusCode, body: string(b)}
 	}
 
 	if out != nil && resp.StatusCode != http.StatusNoContent {
@@ -81,6 +82,20 @@ func (c *apiClient) do(ctx context.Context, method, path string, body, out any) 
 	}
 
 	return nil
+}
+
+type apiError struct {
+	status int
+	body   string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("api error %d: %s", e.status, e.body)
+}
+
+func isConflict(err error) bool {
+	var ae *apiError
+	return errors.As(err, &ae) && ae.status == http.StatusConflict
 }
 
 type notFoundError struct {
