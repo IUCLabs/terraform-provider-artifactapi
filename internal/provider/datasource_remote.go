@@ -51,6 +51,7 @@ func (d *remoteDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"cache_repodata":     schema.BoolAttribute{Computed: true, Description: "Whether generated repodata is cached (github_rpm only)."},
 			"sync_interval":      schema.Int64Attribute{Computed: true, Description: "Release re-scan interval in seconds (github_rpm/github_deb/github_alpine only)."},
 			"releases_remote":    schema.StringAttribute{Computed: true, Description: "Name of the backend remote that serves download bytes."},
+			"github_app":         schema.StringAttribute{Computed: true, Description: "Name of the GitHub App authenticating upstream GitHub requests."},
 			"managed_by":         schema.StringAttribute{Computed: true, Description: "What manages the repository (e.g. terraform)."},
 
 			"upstream_dial_timeout":            schema.Int64Attribute{Computed: true, Description: "Upstream TCP connect timeout in seconds (0 = server default)."},
@@ -83,6 +84,7 @@ type remoteDataSourceModel struct {
 	CacheRepodata     types.Bool   `tfsdk:"cache_repodata"`
 	SyncInterval      types.Int64  `tfsdk:"sync_interval"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
+	GithubApp         types.String `tfsdk:"github_app"`
 	ManagedBy         types.String `tfsdk:"managed_by"`
 
 	UpstreamDialTimeout           types.Int64 `tfsdk:"upstream_dial_timeout"`
@@ -138,6 +140,7 @@ func (d *remoteDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		CacheRepodata:     types.BoolValue(remote.CacheRepodata),
 		SyncInterval:      types.Int64Value(remote.SyncInterval),
 		ReleasesRemote:    types.StringValue(remote.ReleasesRemote),
+		GithubApp:         types.StringValue(remote.GithubApp),
 		ManagedBy:         types.StringValue(remote.ManagedBy),
 
 		UpstreamDialTimeout:           types.Int64Value(remote.UpstreamDialTimeout),

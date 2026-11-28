@@ -924,3 +924,63 @@ func TestValidateConfig_SyncInterval(t *testing.T) {
 		}
 	})
 }
+
+func TestGithubApp_RemoteRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &remoteResource{packageType: "github_rpm"}
+	m := r.apiToModel(ctx, remoteAPI{Name: "acme-tools", BaseURL: "https://api.github.com/repos/acme/tools", GithubApp: "acme"})
+	if m.GithubApp.ValueString() != "acme" {
+		t.Fatalf("apiToModel github_app: got %v", m.GithubApp)
+	}
+	api := r.modelToAPI(ctx, m)
+	body, err := json.Marshal(api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"github_app":"acme"`) {
+		t.Errorf("request body must carry github_app: %s", body)
+	}
+
+	api.GithubApp = ""
+	body, _ = json.Marshal(api)
+	if strings.Contains(string(body), "github_app") {
+		t.Errorf("empty github_app must be omitted: %s", body)
+	}
+	if got := r.apiToModel(ctx, remoteAPI{}).GithubApp; got.IsNull() || got.ValueString() != "" {
+		t.Errorf("absent github_app must read back as the empty default, got %v", got)
+	}
+}
+
+func TestValidateConfig_GithubApp(t *testing.T) {
+	ctx := context.Background()
+	str := func(s string) tftypes.Value { return tftypes.NewValue(tftypes.String, s) }
+	cases := []struct {
+		pkgType string
+		set     map[string]tftypes.Value
+		errs    int
+	}{
+		{"github_rpm", map[string]tftypes.Value{"github_app": str("acme")}, 0},
+		{"github_deb", map[string]tftypes.Value{"github_app": str("acme")}, 0},
+		{"github_alpine", map[string]tftypes.Value{"github_app": str("acme")}, 0},
+		{"vcs", map[string]tftypes.Value{"github_app": str("acme")}, 0},
+		{"generic", map[string]tftypes.Value{"github_app": str("acme")}, 0},
+		{"generic", map[string]tftypes.Value{"github_app": tftypes.NewValue(tftypes.String, tftypes.UnknownValue), "password": str("tok")}, 0},
+		{"generic", map[string]tftypes.Value{"github_app": str(""), "password": str("tok")}, 0},
+		{"generic", map[string]tftypes.Value{"github_app": str("acme"), "username": str(""), "password": str("")}, 0},
+		{"docker", map[string]tftypes.Value{"github_app": str("acme")}, 1},
+		{"rpm", map[string]tftypes.Value{"github_app": str("acme")}, 1},
+		{"vcs", map[string]tftypes.Value{"github_app": str("acme"), "password": str("tok")}, 1},
+		{"github_rpm", map[string]tftypes.Value{"github_app": str("acme"), "username": str("u"), "password": str("p")}, 2},
+		{"docker", map[string]tftypes.Value{"github_app": str("acme"), "username": str("u")}, 2},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d-%s", i, tc.pkgType), func(t *testing.T) {
+			r := &remoteResource{packageType: tc.pkgType}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, resource.ValidateConfigRequest{Config: remoteConfig(ctx, t, r, tc.set)}, &resp)
+			if got := resp.Diagnostics.ErrorsCount(); got != tc.errs {
+				t.Errorf("expected %d errors, got %v", tc.errs, resp.Diagnostics.Errors())
+			}
+		})
+	}
+}

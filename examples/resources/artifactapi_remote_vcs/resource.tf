@@ -10,4 +10,7 @@ resource "artifactapi_remote_vcs" "github" {
   mutable_ttl   = 600
 
   patterns = ["^cli/cli/", "^psf/requests/"]
+
+  # Optional: authenticate as a GitHub App for private repos / higher rate limits.
+  # github_app = artifactapi_github_app.acme.name
 }

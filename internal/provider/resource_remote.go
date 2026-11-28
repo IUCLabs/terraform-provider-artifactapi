@@ -53,6 +53,9 @@ var validMirrorStrategies = map[string]bool{"round_robin": true, "least_conn": t
 // syncer, the only ones accepting sync_interval.
 var syncIntervalPackageTypes = map[string]bool{"github_rpm": true, "github_deb": true, "github_alpine": true}
 
+// githubAppPackageTypes are the remote types that call GitHub and accept github_app.
+var githubAppPackageTypes = map[string]bool{"github_rpm": true, "github_deb": true, "github_alpine": true, "vcs": true, "generic": true}
+
 // maxSyncInterval is the API's 30-day cap on sync_interval, in seconds.
 const maxSyncInterval = 30 * 24 * 60 * 60
 
@@ -85,6 +88,7 @@ type remoteResourceModel struct {
 	CacheRepodata     types.Bool   `tfsdk:"cache_repodata"`
 	SyncInterval      types.Int64  `tfsdk:"sync_interval"`
 	ReleasesRemote    types.String `tfsdk:"releases_remote"`
+	GithubApp         types.String `tfsdk:"github_app"`
 
 	UpstreamDialTimeout           types.Int64 `tfsdk:"upstream_dial_timeout"`
 	UpstreamTLSTimeout            types.Int64 `tfsdk:"upstream_tls_timeout"`
@@ -202,6 +206,10 @@ func (r *remoteResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		},
 		"releases_remote": schema.StringAttribute{
 			Description: "Name of a backend remote that serves the actual download bytes. Used by the terraform remote (download URL rewriting) and the github_rpm/github_deb/github_alpine remotes (302 redirect of .rpm/.deb/.apk downloads to a generic github.com remote).",
+			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
+		},
+		"github_app": schema.StringAttribute{
+			Description: "Name of an `artifactapi_github_app` whose installation token authenticates upstream GitHub requests; only valid on github_rpm/github_deb/github_alpine/vcs/generic remotes and conflicts with `username`/`password`.",
 			Optional:    true, Computed: true, Default: stringdefault.StaticString(""),
 		},
 		"upstream_dial_timeout": schema.Int64Attribute{
@@ -356,6 +364,28 @@ func (r *remoteResource) ValidateConfig(ctx context.Context, req resource.Valida
 		)
 	}
 
+	if knownNonEmpty(config.GithubApp) {
+		if !githubAppPackageTypes[r.packageType] {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("github_app"),
+				"github_app not supported for this remote type",
+				fmt.Sprintf("github_app is only valid on github_rpm/github_deb/github_alpine/vcs/generic remotes, not %q remotes.", r.packageType),
+			)
+		}
+		for _, attr := range []struct {
+			name string
+			v    types.String
+		}{{"username", config.Username}, {"password", config.Password}} {
+			if knownNonEmpty(attr.v) {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("github_app"),
+					"conflicting upstream credentials",
+					fmt.Sprintf("github_app cannot be combined with %s; the GitHub App installation token replaces static credentials.", attr.name),
+				)
+			}
+		}
+	}
+
 	if !config.SyncInterval.IsNull() && !config.SyncInterval.IsUnknown() {
 		if v := config.SyncInterval.ValueInt64(); v < 0 || v > maxSyncInterval {
 			resp.Diagnostics.AddAttributeError(
@@ -413,6 +443,7 @@ func (r *remoteResource) modelToAPI(ctx context.Context, m remoteResourceModel) 
 	api.BanTagsEnabled = m.BanTagsEnabled.ValueBool()
 	api.BanTags = listToStrings(ctx, m.BanTags)
 	api.ReleasesRemote = m.ReleasesRemote.ValueString()
+	api.GithubApp = m.GithubApp.ValueString()
 	return api
 }
 
@@ -451,10 +482,15 @@ func (r *remoteResource) apiToModel(ctx context.Context, api remoteAPI) remoteRe
 		BanTagsEnabled:    types.BoolValue(api.BanTagsEnabled),
 		BanTags:           stringsToList(ctx, api.BanTags),
 		ReleasesRemote:    types.StringValue(api.ReleasesRemote),
+		GithubApp:         types.StringValue(api.GithubApp),
 
 		UpstreamDialTimeout:           types.Int64Value(api.UpstreamDialTimeout),
 		UpstreamTLSTimeout:            types.Int64Value(api.UpstreamTLSTimeout),
 		UpstreamResponseHeaderTimeout: types.Int64Value(api.UpstreamResponseHeaderTimeout),
 	}
 	return m
+}
+
+func knownNonEmpty(v types.String) bool {
+	return !v.IsNull() && !v.IsUnknown() && v.ValueString() != ""
 }

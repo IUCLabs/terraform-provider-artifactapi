@@ -18,4 +18,7 @@ resource "artifactapi_remote_generic" "github" {
   mutable_patterns = [
     ".*/archive/refs/heads/.*\\.tar\\.gz$",
   ]
+
+  # Optional: authenticate github.com downloads as a GitHub App.
+  # github_app = artifactapi_github_app.acme.name
 }

@@ -26,6 +26,7 @@ type remoteAPI struct {
 	CacheRepodata     bool     `json:"cache_repodata"`
 	SyncInterval      int64    `json:"sync_interval"`
 	ReleasesRemote    string   `json:"releases_remote,omitempty"`
+	GithubApp         string   `json:"github_app,omitempty"`
 	ManagedBy         string   `json:"managed_by,omitempty"`
 
 	UpstreamDialTimeout           int64 `json:"upstream_dial_timeout"`
@@ -54,4 +55,16 @@ type settingsResponseAPI struct {
 	Overrides settingsAPI `json:"overrides"`
 	Valid     bool        `json:"valid"`
 	Error     string      `json:"error"`
+}
+
+type githubAppAPI struct {
+	Name                  string `json:"name,omitempty"`
+	AppID                 int64  `json:"app_id"`
+	InstallationID        int64  `json:"installation_id"`
+	PrivateKey            string `json:"private_key,omitempty"`
+	APIBaseURL            string `json:"api_base_url,omitempty"`
+	Description           string `json:"description"`
+	PrivateKeyFingerprint string `json:"private_key_fingerprint,omitempty"`
+	CreatedAt             string `json:"created_at,omitempty"`
+	UpdatedAt             string `json:"updated_at,omitempty"`
 }
